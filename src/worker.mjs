@@ -1,4 +1,5 @@
 import { landingResponse } from './landing.mjs';
+import { groupDay, minuteOf } from './periods.mjs';
 
 import {
   SOURCE_BASE,
@@ -35,14 +36,13 @@ export function tomorrowOf(date) {
 
 const keyFor = date => `schedule:${REGION}:${QUEUE}:${date}`;
 const minutesOf = time => {
-  const [hours, minutes] = time.split(':').map(Number);
-  return hours * 60 + minutes;
+  return minuteOf(time, {allowEndOfDay: true});
 };
 
 export function viewSchedule(record, date, at = new Date()) {
   const baseline = {
     region: REGION, queue: QUEUE, date, timezone: 'Europe/Kyiv',
-    kind: 'unknown', state: 'unknown', sourceUrl: null,
+    kind: 'unknown', state: 'unknown', sourceUrl: null, periods: null,
     checkedAt: null, publishedAtLocal: null, outages: null,
     nextChangeLocal: null, reason: 'not_checked'
   };
@@ -64,27 +64,28 @@ export function viewSchedule(record, date, at = new Date()) {
   }
   if (!Array.isArray(record.outages)) return {...base, reason: 'invalid_data'};
   const outages = record.outages;
-  const totalOutageMinutes = outages.reduce((sum, item) => sum + minutesOf(item.end) - minutesOf(item.start), 0);
+  let periods;
+  try {
+    periods = groupDay(outages);
+  } catch {
+    return {...base, reason: 'invalid_data'};
+  }
+  const totalOutageMinutes = periods.filter(p => p.state === 'scheduled_off')
+    .reduce((sum, period) => sum + period.durationMinutes, 0);
   const clock = kyivClock(at);
   if (date !== clock.date) {
     return {
       ...base, kind: 'schedule', state: 'future_schedule', reason: null,
-      outages, totalOutageMinutes
+      outages, periods, totalOutageMinutes
     };
   }
-
-  const off = outages.some(item =>
+  const period = periods.find(item =>
     clock.minutes >= minutesOf(item.start) && clock.minutes < minutesOf(item.end)
   );
-  const boundaries = outages.flatMap(item => [item.start, item.end])
-    .filter(time => minutesOf(time) > clock.minutes)
-    .sort((a, b) => minutesOf(a) - minutesOf(b));
+  const nextChangeLocal = periods.find(item => minutesOf(item.end) > clock.minutes)?.end ?? null;
   return {
-    ...base,
-    kind: 'schedule',
-    state: off ? 'scheduled_off' : 'scheduled_on',
-    reason: null, outages, totalOutageMinutes,
-    nextChangeLocal: boundaries[0] ?? null
+    ...base, kind: 'schedule', state: period?.state ?? 'unknown',
+    reason: null, outages, periods, totalOutageMinutes, nextChangeLocal
   };
 }
 
