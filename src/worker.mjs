@@ -9,6 +9,8 @@ import {
 } from './cherkasy.mjs';
 
 const REGION = 'cherkasy';
+const MONITOR_KEY = 'monitor:cherkasy:1.1';
+const MONITOR_INTERVAL_MS = 20 * 60 * 1000;
 const FRESH_FOR_MS = 20 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const pad = value => String(value).padStart(2, '0');
@@ -158,6 +160,34 @@ export async function syncSchedules(env, {at = new Date(), fetcher = fetch} = {}
   return result;
 }
 
+// Persist only a sparse heartbeat, to stay within Cloudflare KV Free write limits.
+async function recordMonitor(env, at, report) {
+  if (!env?.SCHEDULES) return;
+  try {
+    const previous = await env.SCHEDULES.get(MONITOR_KEY, 'json');
+    const ageMs = at.getTime() - Date.parse(previous?.checkedAt);
+    const changed = previous?.status !== report.status ||
+      previous?.reason !== (report.reason ?? null);
+    if (changed || !Number.isFinite(ageMs) || ageMs >= MONITOR_INTERVAL_MS) {
+      await env.SCHEDULES.put(MONITOR_KEY, JSON.stringify({
+        checkedAt: at.toISOString(), status: report.status,
+        reason: report.reason ?? null,
+        outcomes: report.outcomes ?? null
+      }), {expirationTtl: 604800});
+    }
+  } catch (error) {
+    console.error('LightFlow monitor storage failed:', String(error));
+  }
+}
+
+function classifySyncError(error) {
+  const message = String(error ?? '').toLowerCase();
+  if (/http\s*(?:401|403|429|5\d\d)/.test(message)) return 'source_http_error';
+  if (message.includes('fetch') || message.includes('network') || message.includes('connect')) return 'source_network_error';
+  if (message.includes('no timetable')) return 'source_index_unrecognized';
+  return 'sync_failed';
+}
+
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -187,10 +217,19 @@ export function createWorker({now = () => new Date(), fetcher = fetch} = {}) {
       if (url.pathname === '/') return landingResponse();
       const at = now();
       if (url.pathname === '/health') {
-        return jsonResponse({
-          service: 'lightflow', status: env?.SCHEDULES ? 'configured' : 'not_configured',
-          serverTime: at.toISOString()
-        }, env?.SCHEDULES ? 200 : 503);
+        if (!env?.SCHEDULES) return jsonResponse({
+          service: 'lightflow', status: 'not_configured', serverTime: at.toISOString()
+        }, 503);
+        try {
+          const monitor = await env.SCHEDULES.get(MONITOR_KEY, 'json');
+          return jsonResponse({
+            service: 'lightflow', status: 'configured', serverTime: at.toISOString(),
+            sync: monitor ?? {status: 'not_seen'}
+          });
+        } catch (error) {
+          console.error('LightFlow health KV read failed:', String(error));
+          return jsonResponse({service: 'lightflow', status: 'storage_unavailable'}, 503);
+        }
       }
       if (url.pathname !== '/api/v1/schedule') return jsonResponse({error: 'not_found'}, 404);
 
@@ -214,7 +253,18 @@ export function createWorker({now = () => new Date(), fetcher = fetch} = {}) {
       }
     },
     async scheduled(_controller, env, ctx) {
-      ctx.waitUntil(syncSchedules(env, {at: now(), fetcher}));
+      const at = now();
+      ctx.waitUntil((async () => {
+        try {
+          const outcomes = await syncSchedules(env, {at, fetcher});
+          await recordMonitor(env, at, {status: 'ok', outcomes});
+        } catch (error) {
+          console.error('LightFlow cron sync failed:', String(error));
+          await recordMonitor(env, at, {
+            status: 'error', reason: classifySyncError(error)
+          });
+        }
+      })());
     }
   };
 }
