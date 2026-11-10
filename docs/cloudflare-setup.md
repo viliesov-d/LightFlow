@@ -1,3 +1,19 @@
+# LightFlow — Cloudflare (актуальний стан)
+
+**Підключено 10.11.2026** через авторизований Cloudflare-акаунт:
+
+- Worker: `lightflow-api`
+- Workers subdomain: `lightflow-viliesov.workers.dev`
+- Планова адреса API: `https://lightflow-api.lightflow-viliesov.workers.dev/api/v1/schedule`
+- Health: `https://lightflow-api.lightflow-viliesov.workers.dev/health`
+- KV: `LIGHTFLOW_SCHEDULES`
+- Cron: `*/5 * * * *` (UTC, кожні 5 хв)
+- Конфігурація `wrangler.jsonc` прив'язана до реального KV namespace.
+
+> Завантаження коду та активацію тригера підтверджено через Cloudflare API. DNS/HTTP перевірка публічної адреси під час першого створення субдомену не пройшла, тому до публічної доступності потрібно ставитися як до ще непідтвердженої; можлива затримка активації DNS. Фактичні дані в KV перевіримо після Cron.
+
+---
+
 # LightFlow — безкоштовне розгортання Cloudflare Worker
 
 > Це інструкція; **жоден Cloudflare Worker не буде запущений**, доки власник акаунта сам не налаштує Cloudflare.
