@@ -11,9 +11,11 @@ const GREEN = new Color("#55e0a8");
 const WHITE = new Color("#f9fbff");
 
 function dateInKyiv(date) {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit"
-  }).format(date);
+  }).formatToParts(date);
+  const item = name => parts.find(part => part.type === name)?.value;
+  return item("year") + "-" + item("month") + "-" + item("day");
 }
 function minutes(value) {
   if (typeof value !== "string" || !/^\d{2}:\d{2}$/.test(value)) return NaN;
@@ -39,13 +41,6 @@ function valid(payload) {
     cursor = end;
   }
   return cursor === 1440;
-}
-function label(text, color, size, font = "regular") {
-  const row = new ListWidget();
-  const item = row.addText(text);
-  item.textColor = color;
-  item.font = font === "bold" ? Font.boldSystemFont(size) : Font.systemFont(size);
-  return item;
 }
 function addText(stack, value, color, size, bold = false) {
   const item = stack.addText(value);
