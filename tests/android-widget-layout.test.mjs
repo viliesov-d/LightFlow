@@ -15,7 +15,7 @@ const ROOT='widgets/android/app/src/main/res/layout/';
 for(const [name,views] of [
   ['widget_small.xml',['smallRoot','smallStatus','smallInfo']],
   ['widget_large.xml',['largeRoot','largeStatus','largeInfo',
-    ...Array.from({length:10},(_,i)=>'period'+(i+1))]
+    ...Array.from({length:10},(_,i)=>'period'+(i+1))]]
 ]) {
   test(name+' contains only RemoteViews-supported XML classes',()=>{
     const xml=readFileSync(ROOT+name,'utf8');
