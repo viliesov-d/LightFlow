@@ -114,7 +114,7 @@ export function parseArticle(html, publication, queue = QUEUE) {
   const anchor = text.toLowerCase().indexOf('години відсутності електропостачання:');
   if (anchor < 0) throw new Error('Не знайдено офіційний перелік годин');
   const rows = text.slice(anchor).split('\n');
-  const row = rows.find(line => new RegExp(`^\\\\s*${queue.replace('.', '\\\\.')}\\\\s+`).test(line));
+  const row = rows.find(line => new RegExp(`^\\s*${queue.replace('.', '\\.')}\\s+`).test(line));
   if (!row) throw new Error(`Чергу ${queue} не знайдено в статті`);
   return {
     region: 'cherkasy', queue, date: publication.date, timezone: 'Europe/Kyiv',
