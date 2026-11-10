@@ -89,7 +89,9 @@ function timeToMinutes(time, allow24 = false) {
 export function parseQueueIntervals(line, queue = QUEUE) {
   const match = String(line).trim().match(/^([1-6]\.[12])\s+(.+)$/u);
   if (!match || match[1] !== queue) throw new Error(`Не знайдено чергу ${queue}`);
-  const parts = match[2].split(',').map(x => x.trim());
+  // Офіційні публікації іноді розривають час пробілом: «00 :00».
+  // Нормалізуємо лише пробіли навколо двокрапки, не виправляючи довільні цифри.
+  const parts = match[2].replace(/(\d{1,2})\s*:\s*(\d{2})/g, '$1:$2').split(',').map(x => x.trim());
   if (!parts.length || parts.some(x => !x)) throw new Error('Порожній інтервал');
   const outages = parts.map(part => {
     const range = part.match(/^(\d{2}:\d{2})\s*[-–—]\s*(\d{2}:\d{2})$/u);
