@@ -121,3 +121,31 @@ test('homepage provides a readable online view while retaining JSON API routes',
   const unknown=await worker.fetch(new Request('https://lightflow.example/does-not-exist'),{});
   assert.equal(unknown.status,404);
 });
+
+test('scheduled sync leaves a visible health heartbeat even if source is unavailable', async () => {
+  const env={SCHEDULES:new FakeKV()};
+  const worker=createWorker({
+    now:instant,
+    fetcher: async () => {throw new Error('fetch failed: upstream blocked');}
+  });
+  let pending;
+  await worker.scheduled({},env,{waitUntil(promise){pending=promise;}});
+  await pending;
+  const health=await worker.fetch(new Request('https://local.test/health'),env);
+  const monitor=(await health.json()).sync;
+  assert.equal(monitor.status, 'error');
+  assert.equal(monitor.reason,'source_network_error');
+  assert.ok(monitor.checkedAt);
+});
+
+test('successful cron persists a healthy diagnostic heartbeat', async () => {
+  const env={SCHEDULES:new FakeKV()};
+  const worker=createWorker({now:instant,fetcher:makeFetcher(updated+initial)});
+  let pending;
+  await worker.scheduled({},env,{waitUntil(promise){pending=promise;}});
+  await pending;
+  const health=await worker.fetch(new Request('https://local.test/health'),env);
+  const monitor=(await health.json()).sync;
+  assert.equal(monitor.status,'ok');
+  assert.equal(monitor.outcomes[0].outcome,'verified');
+});
