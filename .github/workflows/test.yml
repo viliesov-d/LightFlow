@@ -11,3 +11,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm test
+      - name: Advisory official-source HTML probe
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: node scripts/probe-source.mjs
