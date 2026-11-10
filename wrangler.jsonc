@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lightflow-api",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-11-10",
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SCHEDULES",
+      "id": "REPLACE_WITH_YOUR_CLOUDFLARE_KV_NAMESPACE_ID"
+    }
+  ]
+}
