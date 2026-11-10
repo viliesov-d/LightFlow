@@ -1,3 +1,5 @@
+import { landingResponse } from './landing.mjs';
+
 import {
   SOURCE_BASE,
   QUEUE,
@@ -182,6 +184,7 @@ export function createWorker({now = () => new Date(), fetcher = fetch} = {}) {
       if (request.method !== 'GET') return jsonResponse({error: 'method_not_allowed'}, 405);
 
       const url = new URL(request.url);
+      if (url.pathname === '/') return landingResponse();
       const at = now();
       if (url.pathname === '/health') {
         return jsonResponse({
