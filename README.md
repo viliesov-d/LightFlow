@@ -12,10 +12,20 @@
 
 ## Стан розробки
 
-- ✅ A1: парсер публікацій ГПВ, вибір найновішої редакції, перевірка інтервалів.
-- ✅ A2 (код): Cloudflare Worker з Cron Trigger, KV, публічним API, обробкою помилок та тестами.
-- ⏳ A2 (розгортання): потрібне створення безкоштовного Cloudflare-акаунта, KV namespace і перевірка доступу до офіційного сайту з інфраструктури Cloudflare.
-- ⏳ B/C: сайт та віджети Android/iPhone.
+- ✅ A1: парсер офіційних публікацій ГПВ та перевірка інтервалів.
+- ✅ A2: Cloudflare Worker, Cron кожні 5 хв, KV та JSON API.
+- ✅ B: онлайн-сайт зі згрупованими періодами дня (00:00–24:00) і точним списком відключень.
+- ✅ C (код): два віджети iPhone через Scriptable; два нативні Android-віджети на Kotlin.
+- ✅ C (збірка): Android APK успішно зібрано GitHub Actions.
+- ⏳ D: перевірити справжні віджети на телефонах і частоту оновлень у фоновому режимі.
+
+**Сайт:** https://lightflow-api.lightflow-viliesov.workers.dev/
+
+**iPhone:** [Інструкція Scriptable](widgets/ios/README.md) · [код скрипта](widgets/ios/LightFlow.js).
+
+**Android:** [Інструкція встановлення](widgets/android/README.md) · [збірки APK](https://github.com/viliesov-d/LightFlow/actions/workflows/android-apk.yml).
+
+> На віджетах відображається **плановий** стан. ОС можуть затримувати оновлення та тимчасово показувати попереднє відображення. Сам LightFlow не зберігає графіки локально в телефоні.
 
 ## API v1
 
@@ -53,9 +63,9 @@
 
 Значення `state`: `scheduled_on`, `scheduled_off`, `future_schedule`, `unknown`. Якщо джерело недоступне понад 20 хвилин або оновлену публікацію не вдається перевірити, API повертає `unknown` **без інтервалів**.
 
-## Розгортання
+## Розгортання або оновлення
 
-Повна інструкція: [docs/cloudflare-setup.md](docs/cloudflare-setup.md).
+Cloudflare Worker уже розгорнуто. Для відтворення налаштування дивись: [docs/cloudflare-setup.md](docs/cloudflare-setup.md).
 
 ```bash
 npm install
