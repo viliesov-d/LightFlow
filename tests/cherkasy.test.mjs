@@ -62,3 +62,11 @@ test('network pipeline loads updated article', async () => {
   assert.equal(fetched.length,2);
   assert.equal(result.outages.length,5);
 });
+
+test('normalizes harmless whitespace around clock colon found in live source', () => {
+  assert.deepEqual(parseQueueIntervals('1.1 00 :00 - 02:00, 04: 00 - 08:00'), [
+    {start:'00:00',end:'02:00'}, {start:'04:00',end:'08:00'}
+  ]);
+  assert.throws(() => parseQueueIntervals('1.1 24:30 - 25:00'), /Неприпустимий/);
+  assert.throws(() => parseQueueIntervals('1.1 00:0 0 - 02:00'), /Нерозпізнаний/);
+});
