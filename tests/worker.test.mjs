@@ -108,3 +108,16 @@ test('scheduled handler triggers sync in waitUntil', async () => {
   await task;
   assert.ok(await env.SCHEDULES.get('schedule:cherkasy:1.1:2026-11-10','json'));
 });
+
+test('homepage provides a readable online view while retaining JSON API routes', async () => {
+  const worker=createWorker({now:()=>new Date('2026-11-10T11:00:00Z')});
+  const response=await worker.fetch(new Request('https://lightflow.example/'),{});
+  assert.equal(response.status,200);
+  assert.match(response.headers.get('content-type'),/text\/html/);
+  const html=await response.text();
+  assert.match(html, /LightFlow/);
+  assert.match(html, /Статус невідомий/);
+  assert.match(html, /api\/v1\/schedule/);
+  const unknown=await worker.fetch(new Request('https://lightflow.example/does-not-exist'),{});
+  assert.equal(unknown.status,404);
+});
