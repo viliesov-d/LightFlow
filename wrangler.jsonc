@@ -10,7 +10,7 @@
   "kv_namespaces": [
     {
       "binding": "SCHEDULES",
-      "id": "REPLACE_WITH_YOUR_CLOUDFLARE_KV_NAMESPACE_ID"
+      "id": "d3ee8d43684946689a4067a3afda06d9"
     }
   ]
 }
