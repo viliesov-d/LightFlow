@@ -2,13 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const base='widgets/android/app/src/main/';
-const art=readFileSync(base+'java/com/lightflow/widgets/WidgetArt.kt','utf8');
-const widgets=readFileSync(base+'java/com/lightflow/widgets/LightFlowWidgets.kt','utf8');
+const app='widgets/android/app/src/main/';
+const art=readFileSync(app+'java/com/lightflow/widgets/WidgetArt.kt','utf8');
+const widgets=readFileSync(app+'java/com/lightflow/widgets/LightFlowWidgets.kt','utf8');
 
-test('all three branded widgets stay bounded Canvas bitmaps',()=>{
-  for(const feature of ['Kind.BULB','Kind.CAROUSEL','Kind.DIAL'])
-    assert.ok(art.includes(feature));
+function section(start,end) {
+  const from=art.indexOf(start), to=art.indexOf(end,from);
+  assert.ok(from>=0 && to>from, 'Missing WidgetArt section '+start);
+  return art.slice(from,to);
+}
+
+test('three widget faces are still bounded Canvas bitmaps on existing RemoteViews',()=>{
+  for(const name of ['Kind.BULB','Kind.CAROUSEL','Kind.DIAL']) {
+    assert.ok(art.includes(name));
+  }
   assert.match(art,/Bitmap\.createBitmap\(size\.first,size\.second,Bitmap\.Config\.ARGB_8888\)/);
   assert.match(art,/340 to 340/);
   assert.match(art,/840 to 260/);
@@ -17,63 +24,68 @@ test('all three branded widgets stay bounded Canvas bitmaps',()=>{
   assert.doesNotMatch(widgets,/R\.id\.period\d+|R\.id\.smallStatus|R\.id\.largeStatus/);
 });
 
-test('small bulb is 19% smaller and visibly balanced, with the interval only',()=>{
-  const small=art.split('private fun bulb(')[1].split('private fun strip(')[0];
+test('small widget is just a symmetric warm lightbulb and time interval',()=>{
+  const small=section('    private fun bulb(', '    private fun strip(');
   assert.match(small,/r=side\*\.166f/);
-  assert.match(small,/y=h\*\.385f/);
-  assert.match(small,/paint\(accent,side\*\.012f,Paint\.Style\.STROKE\)/);
-  assert.match(small,/setShadowLayer\(side\*\.019f/);
-  assert.match(small,/c\.drawPath\(lightning,paint\(amber\)\)/);
+  assert.match(small,/val accent=when\(state\?\.off\)/);
+  assert.match(small,/false->gold/);
+  assert.match(small,/true->red/);
+  assert.match(small,/setShadowLayer\(side\*\.022f/);
+  assert.match(small,/c\.drawPath\(bolt,paint\(boltColor\)\)/);
   assert.match(small,/state\.start\+"–"\+state\.end/);
   assert.doesNotMatch(small,/LightFlow|Черкаська|Відключення|Світло за графіком/);
 });
 
-test('carousel is slim, with status above and only time inside each 66%-wide block',()=>{
-  const medium=art.split('private fun strip(')[1].split('private fun dial(')[0];
+test('slender carousel prioritizes a 66%-wide active capsule and a fixed arrow',()=>{
+  const medium=section('    private fun strip(', '    private fun dial(');
   assert.match(medium,/val segmentWidth=w\*\.66f/);
-  assert.match(medium,/val top=h\*\.375f/);
-  assert.match(medium,/val bottom=h\*\.725f/);
-  assert.match(medium,/val status=when\(current\?\.off\)/);
-  assert.match(medium,/c\.drawText\(status,w\*\.093f,h\*\.273f/);
-  assert.match(medium,/write\(c,period\.start\+"–"\+period\.end/);
-  assert.doesNotMatch(medium,/ВІДКЛЮЧЕННЯ|Є СВІТЛО ЗА ГРАФІКОМ/);
+  assert.match(medium,/val top=h\*\.391f/);
+  assert.match(medium,/val bottom=h\*\.707f/);
+  assert.match(medium,/c\.drawText\(status,w\*\.099f,h\*\.287f/);
+  assert.match(medium,/false->"Є світло"/);
+  assert.match(medium,/true->"Відключення"/);
   assert.match(medium,/now\.hour\*60f\+now\.minute\+now\.second\/60f/);
-  assert.match(medium,/left=center-progress\*segmentWidth/);
-  assert.match(medium,/val x=left\+\(index-i\)\*\(segmentWidth\+gap\)/);
-  assert.match(medium,/moveTo\(center,h\*\.783f\)/);
+  assert.match(medium,/val activeLeft=\(w-segmentWidth\)\*\.5f\+/);
+  assert.match(medium,/\.5f-progress\)\*w\*\.25f/);
+  assert.match(medium,/val x=activeLeft\+\(i-index\)\*\(segmentWidth\+gap\)/);
+  assert.match(medium,/write\(c,segment\.start\+"–"\+segment\.end/);
+  assert.match(medium,/moveTo\(center,h\*\.757f\)/);
+  assert.doesNotMatch(medium,/Є СВІТЛО ЗА ГРАФІКОМ|ВІДКЛЮЧЕННЯ/);
 });
 
-test('24-hour dial keeps hour markers and moves pointer around ring without blocking centre',()=>{
-  const large=art.split('private fun dial(')[1].split('fun draw(')[0];
+test('24h clock has accurate time, soft minute-accurate sectors and white dot pointer',()=>{
+  const large=section('    private fun dial(', '    fun draw(');
+  assert.match(large,/val radius=side\*\.344f;val thickness=side\*\.101f/);
+  assert.match(large,/c\.drawArc\(bounds,-90f\+start\/4f,\(end-start\)\/4f/);
   assert.match(large,/for\(hour in 0\.\.23\)/);
-  assert.match(large,/val radius=side\*\.346f;val thickness=side\*\.104f/);
   assert.match(large,/val elapsed=now\.hour\*3600\+now\.minute\*60\+now\.second/);
   assert.match(large,/elapsed\/86400\.0\*360\.0/);
-  assert.match(large,/polarX\(cx,radius-thickness\*\.82f,angle\)/);
-  assert.doesNotMatch(large,/c\.drawCircle\(cx,cy,side\*\.009f/);
+  assert.match(large,/c\.drawCircle\(px,py,side\*\.011f,paint\(text\)\)/);
+  assert.doesNotMatch(large,/val tip=Path|lineTo\(px-ux/);
   assert.match(large,/DateTimeFormatter\.ofPattern\("d MMMM",Locale\("uk"\)\)/);
-  assert.match(large,/"1\.1"/);
+  assert.match(large,/write\(c,"1\.1"/);
   assert.match(large,/when\(current\?\.off\)/);
 });
 
-test('color palette is soft navy, vivid mint and coral, warm yellow bolt',()=>{
-  assert.match(art,/bg=Color\.rgb\(14,25,40\)/);
-  assert.match(art,/green=Color\.rgb\(98,229,179\)/);
-  assert.match(art,/red=Color\.rgb\(255,130,140\)/);
-  assert.match(art,/amber=Color\.rgb\(249,211,112\)/);
+test('soft-minimal palette matches the selected reference',()=>{
+  assert.match(art,/bg=Color\.rgb\(15,27,42\)/);
+  assert.match(art,/bgHighlight=Color\.rgb\(26,45,64\)/);
+  assert.match(art,/green=Color\.rgb\(108,231,186\)/);
+  assert.match(art,/red=Color\.rgb\(242,118,131\)/);
+  assert.match(art,/amber=Color\.rgb\(255,186,57\)/);
+  assert.match(art,/gold=Color\.rgb\(255,211,131\)/);
 });
 
-test('clock updates remain best-effort, no exact alarm permissions',()=>{
-  const manifest=readFileSync(base+'AndroidManifest.xml','utf8');
+test('clock remains best effort without exact alarm permissions',()=>{
+  const manifest=readFileSync(app+'AndroidManifest.xml','utf8');
   assert.match(widgets,/setAndAllowWhileIdle\(/);
   assert.match(widgets,/5 \* 60 \* 1000L/);
-  assert.match(widgets,/WidgetClock\.cancel\(context\)/);
   assert.doesNotMatch(manifest,/SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM/);
   assert.doesNotMatch(widgets,/SharedPreferences|DataStore|FileManager|SQLiteDatabase/);
 });
 
-test('Android patch version is 0.3.1',()=>{
+test('release version 0.4.0 has a new installable version code',()=>{
   const gradle=readFileSync('widgets/android/app/build.gradle.kts','utf8');
-  assert.match(gradle,/versionName = "0\.3\.1"/);
-  assert.match(gradle,/versionCode = 5/);
+  assert.match(gradle,/versionName = "0\.4\.0"/);
+  assert.match(gradle,/versionCode = 6/);
 });
