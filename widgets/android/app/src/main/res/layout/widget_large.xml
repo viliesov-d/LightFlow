@@ -3,8 +3,7 @@
     android:id="@+id/largeRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_background"
-    android:clipToOutline="true">
+>
 
     <ImageView
         android:id="@+id/largeArtwork"
@@ -17,8 +16,7 @@
         android:id="@+id/largeLoading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/widget_loading_background"
-        android:clipToOutline="true"
+
         android:visibility="gone">
 
         <ImageView
@@ -38,6 +36,10 @@
             android:gravity="center"
             android:text="Оновлюємо…"
             android:textColor="#F4F8FF"
+            android:shadowColor="#D9000A16"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="4"
             android:textSize="13sp"
             android:textStyle="bold"
             android:maxLines="1" />

@@ -84,8 +84,20 @@ test('clock remains best effort without exact alarm permissions',()=>{
   assert.doesNotMatch(widgets,/SharedPreferences|DataStore|FileManager|SQLiteDatabase/);
 });
 
-test('release version 0.4.0 has a new installable version code',()=>{
+test('release version 0.4.1 is a new installable build',()=>{
   const gradle=readFileSync('widgets/android/app/build.gradle.kts','utf8');
-  assert.match(gradle,/versionName = "0\.4\.0"/);
-  assert.match(gradle,/versionCode = 6/);
+  assert.match(gradle,/versionName = "0\.4\.1"/);
+  assert.match(gradle,/versionCode = 7/);
+});
+
+test('widget artwork canvas starts transparent and never paints a full card',()=>{
+  assert.match(art,/Bitmap\.createBitmap\(size\.first,size\.second,Bitmap\.Config\.ARGB_8888\)/);
+  assert.match(art,/val canvas=Canvas\(cBitmap\)/);
+  assert.doesNotMatch(art,/\bbase\(canvas/);
+  assert.doesNotMatch(art,/private fun base\(/);
+  assert.doesNotMatch(art,/c\.drawRoundRect\(rect,radius,radius,paint\(bg\)/);
+  // Draw only the bulb, carousel capsules, or circular schedule over the wallpaper.
+  assert.match(art,/No card fill or frame/);
+  assert.match(art,/setShadowLayer\(size\*\.14f/);
+  assert.match(art,/Paint\.Style\.STROKE/);
 });

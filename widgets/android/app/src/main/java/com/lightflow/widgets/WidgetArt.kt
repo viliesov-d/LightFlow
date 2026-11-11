@@ -30,7 +30,15 @@ internal object WidgetArt {
         }
     private fun write(c:Canvas,s:String,x:Float,y:Float,size:Float,col:Int=text,
                       type:Typeface=font) {
-        c.drawText(s,x,y,paint(col).apply {textSize=size;textAlign=Paint.Align.CENTER;typeface=type})
+        // A restrained dark keyline/shadow keeps text readable on light or busy wallpapers.
+        val outline=paint(Color.argb(130,6,15,25),size*.090f,Paint.Style.STROKE).apply {
+            textSize=size; textAlign=Paint.Align.CENTER; typeface=type
+        }
+        if(col==text || col==muted) c.drawText(s,x,y,outline)
+        c.drawText(s,x,y,paint(col).apply {
+            textSize=size; textAlign=Paint.Align.CENTER; typeface=type
+            if(col==text || col==muted) setShadowLayer(size*.14f,0f,size*.04f,Color.argb(160,6,15,25))
+        })
     }
     private fun polarX(cx:Float,r:Float,a:Double)=cx+cos(a).toFloat()*r
     private fun polarY(cy:Float,r:Float,a:Double)=cy+sin(a).toFloat()*r
@@ -42,16 +50,7 @@ internal object WidgetArt {
             current>=from && current<to
         }
     }
-    private fun base(c: Canvas, w: Float, h: Float) {
-        val radius = min(w,h)*.118f
-        val rect = RectF(1.5f,1.5f,w-1.5f,h-1.5f)
-        c.drawRoundRect(rect,radius,radius,paint(bg).apply {
-            shader = LinearGradient(0f,0f,w,h,
-                intArrayOf(bgHighlight,bg,Color.rgb(12,24,38)),
-                floatArrayOf(0f,.53f,1f),Shader.TileMode.CLAMP)
-        })
-        c.drawRoundRect(rect,radius,radius,paint(edge,1.7f,Paint.Style.STROKE))
-    }
+    // No card fill or frame: all pixels outside the actual artwork remain transparent.
 
     private fun bulb(c: Canvas,w: Float,h: Float,data: Schedule?,now: ZonedDateTime) {
         val state=nowPeriod(data,now)
@@ -111,6 +110,7 @@ internal object WidgetArt {
         c.drawText(status,w*.099f,h*.287f,paint(text).apply {
             textSize=h*.157f
             typeface=medium
+            setShadowLayer(h*.022f,0f,h*.010f,Color.argb(200,6,15,25))
         })
         val center=w*.5f
         val segmentWidth=w*.66f   // 66% of visible carousel width.
@@ -247,7 +247,8 @@ internal object WidgetArt {
         }
         val cBitmap=Bitmap.createBitmap(size.first,size.second,Bitmap.Config.ARGB_8888)
         val canvas=Canvas(cBitmap)
-        base(canvas,size.first.toFloat(),size.second.toFloat())
+        // Fresh ARGB_8888 bitmaps start with alpha 0: transparent wallpaper shows through.
+        // Do not paint any rectangular panel, including behind the 24-hour circle.
         when(kind){
             Kind.BULB->bulb(canvas,size.first.toFloat(),size.second.toFloat(),schedule,now)
             Kind.CAROUSEL->strip(canvas,size.first.toFloat(),size.second.toFloat(),schedule,now)

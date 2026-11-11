@@ -14,9 +14,9 @@ for(const size of ['small','medium','large']) {
     assert.match(xml,new RegExp('android:id="@\\+id/'+size+'Ripple"'));
     assert.match(xml,new RegExp('android:id="@\\+id/'+size+'LoadingText"'));
     assert.match(xml,/android:visibility="gone"/);
-    assert.match(xml,/android:background="@drawable\/widget_loading_background"/);
-    assert.match(xml,/android:clipToOutline="true"/);
-    assert.doesNotMatch(xml,/android:background="#F0/);
+    assert.doesNotMatch(xml,/android:background=|android:clipToOutline=/);
+    assert.match(xml,/android:shadowColor="#D9000A16"/);
+    assert.match(xml,/android:shadowRadius="4"/);
     assert.match(xml,/<FrameLayout/);
     assert.match(xml,/<ImageView/);
     assert.doesNotMatch(xml,/<Space\b/);
@@ -48,15 +48,21 @@ test('ripple frames use Android supported vectors, and labels appear after tap',
     assert.match(xml,/#F9D370/);
   }
 });
-test('loading background has matching rounded corners with no square overlay',()=>{
-  const base=readFileSync(android+'res/drawable/widget_background.xml','utf8');
-  const loading=readFileSync(android+'res/drawable/widget_loading_background.xml','utf8');
-  const radius=/<corners android:radius="([^"]+)"\/>/;
-  assert.equal(loading.match(radius)?.[1],base.match(radius)?.[1]);
-  assert.ok(loading.includes('android:color="#F50F1B2A"'));
+test('refresh and artwork leave transparent pixels outside the graphics',()=>{
+  for(const path of ['widget_background.xml','widget_loading_background.xml']) {
+    const xml=readFileSync(android+'res/drawable/'+path,'utf8');
+    assert.match(xml,/android:color="#00000000"/);
+    assert.doesNotMatch(xml,/<stroke|#F50F1B2A|#0F1B2A/);
+  }
+  assert.match(kotlin,/setViewVisibility\(config\.artwork, View\.INVISIBLE\)/);
+  assert.match(kotlin,/setViewVisibility\(config\.artwork, View\.VISIBLE\)/);
+  assert.match(kotlin,/setViewVisibility\(config\.loading, View\.VISIBLE\)/);
+  assert.match(kotlin,/setViewVisibility\(config\.loading, View\.GONE\)/);
   for(const kind of ['small','medium','large']) {
-    const view=readFileSync(android+'res/layout/widget_'+kind+'.xml','utf8');
-    assert.match(view,/android:scaleType="fitCenter"/);
+    const xml=readFileSync(android+'res/layout/widget_'+kind+'.xml','utf8');
+    assert.doesNotMatch(xml,/android:background=/);
+    assert.match(xml,/android:shadowColor="#D9000A16"/);
+    assert.match(xml,/android:visibility="gone"/);
   }
 });
 test('Android background refresh includes next-change one-shot job',()=>{
