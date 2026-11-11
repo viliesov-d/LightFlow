@@ -6,7 +6,7 @@ const android='widgets/android/app/src/main/';
 const kotlin=readFileSync(android+'java/com/lightflow/widgets/LightFlowWidgets.kt','utf8');
 const manifest=readFileSync(android+'AndroidManifest.xml','utf8');
 
-for(const size of ['small','medium','large']) {
+for(const size of ['small','compact','large']) {
   test(size+' widget supports full-area ripple refresh without opening a website', () => {
     const xml=readFileSync(android+'res/layout/widget_'+size+'.xml','utf8');
     assert.match(xml,new RegExp('android:id="@\\+id/'+size+'Root"'));
@@ -58,7 +58,7 @@ test('refresh and artwork leave transparent pixels outside the graphics',()=>{
   assert.match(kotlin,/setViewVisibility\(config\.artwork, View\.VISIBLE\)/);
   assert.match(kotlin,/setViewVisibility\(config\.loading, View\.VISIBLE\)/);
   assert.match(kotlin,/setViewVisibility\(config\.loading, View\.GONE\)/);
-  for(const kind of ['small','medium','large']) {
+  for(const kind of ['small','compact','large']) {
     const xml=readFileSync(android+'res/layout/widget_'+kind+'.xml','utf8');
     assert.doesNotMatch(xml,/android:background=/);
     assert.match(xml,/android:shadowColor="#D9000A16"/);

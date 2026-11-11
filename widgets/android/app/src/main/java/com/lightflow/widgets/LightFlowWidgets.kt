@@ -118,9 +118,9 @@ private object Renderer {
         Layout(WidgetArt.Kind.BULB, SmallWidgetProvider::class.java,
             R.layout.widget_small, R.id.smallRoot, R.id.smallArtwork,
             R.id.smallLoading, R.id.smallRipple, R.id.smallLoadingText),
-        Layout(WidgetArt.Kind.CAROUSEL, MediumWidgetProvider::class.java,
-            R.layout.widget_medium, R.id.mediumRoot, R.id.mediumArtwork,
-            R.id.mediumLoading, R.id.mediumRipple, R.id.mediumLoadingText),
+        Layout(WidgetArt.Kind.COMPACT_DIAL, CompactDialWidgetProvider::class.java,
+            R.layout.widget_compact, R.id.compactRoot, R.id.compactArtwork,
+            R.id.compactLoading, R.id.compactRipple, R.id.compactLoadingText),
         Layout(WidgetArt.Kind.DIAL, LargeWidgetProvider::class.java,
             R.layout.widget_large, R.id.largeRoot, R.id.largeArtwork,
             R.id.largeLoading, R.id.largeRipple, R.id.largeLoadingText)
@@ -271,8 +271,8 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
             val manager = AppWidgetManager.getInstance(context)
             val small = manager.getAppWidgetIds(ComponentName(context, SmallWidgetProvider::class.java))
             val large = manager.getAppWidgetIds(ComponentName(context, LargeWidgetProvider::class.java))
-            val medium = manager.getAppWidgetIds(ComponentName(context, MediumWidgetProvider::class.java))
-            if (small.isEmpty() && large.isEmpty() && medium.isEmpty()) {
+            val compact = manager.getAppWidgetIds(ComponentName(context, CompactDialWidgetProvider::class.java))
+            if (small.isEmpty() && large.isEmpty() && compact.isEmpty()) {
                 workManager(context).cancelUniqueWork(PERIODIC_WORK)
                 workManager(context).cancelUniqueWork(BOUNDARY_WORK)
                 WidgetClock.cancel(context)
@@ -338,18 +338,18 @@ class LargeWidgetProvider : AppWidgetProvider() {
     override fun onDisabled(context: Context) { RefreshWorker.stopIfNoWidgets(context) }
 }
 
-/** New compact full-width widget: 66%-width time segments and a stationary centre arrow. */
-class MediumWidgetProvider : AppWidgetProvider() {
+/** Compact 2×2 dial preserves the full 24-hour schedule with readable markings. */
+class CompactDialWidgetProvider : AppWidgetProvider() {
     override fun onEnabled(context: Context) { RefreshWorker.schedule(context) }
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        Renderer.render(context, null, WidgetArt.Kind.CAROUSEL)
+        Renderer.render(context, null, WidgetArt.Kind.COMPACT_DIAL)
         RefreshWorker.schedule(context)
     }
     override fun onDisabled(context: Context) { RefreshWorker.stopIfNoWidgets(context) }
 }
 
 /**
- * The visual dial and carousel can only change when Android applies a RemoteViews update.
+ * The visual dials can only change when Android applies a RemoteViews update.
  * An inexact five-minute alarm REQUESTS an online refresh; Doze and OEM launchers may defer it.
  * No exact-alarm permission, foreground service, or client-side schedule persistence is used.
  */

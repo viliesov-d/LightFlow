@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/mediumRoot"
+    android:id="@+id/compactRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
 >
 
     <ImageView
-        android:id="@+id/mediumArtwork"
+        android:id="@+id/compactArtwork"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitXY"
+        android:scaleType="fitCenter"
         android:contentDescription="@null" />
 
     <FrameLayout
-        android:id="@+id/mediumLoading"
+        android:id="@+id/compactLoading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
 
         android:visibility="gone">
 
         <ImageView
-            android:id="@+id/mediumRipple"
+            android:id="@+id/compactRipple"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scaleType="fitCenter"
@@ -28,7 +28,7 @@
             android:contentDescription="@null"/>
 
         <TextView
-            android:id="@+id/mediumLoadingText"
+            android:id="@+id/compactLoadingText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|center_horizontal"
