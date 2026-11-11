@@ -282,41 +282,91 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
 }
 
 /**
- * A home-screen RemoteViews click carries widget ID but not the exact touch coordinates.
- * Eight gentle vector frames approximate a ripple spreading from the widget centre.
- * The update starts only after the label has appeared. No Activity/browser is launched.
+ * A widget PendingIntent is a broadcast, so Android never supplies a click count.
+ * Hold a first tap for a short window. If a second tap on THAT SAME widget arrives,
+ * cancel the refresh and open the site instead. Nothing is saved on disk.
  */
-class RefreshTapReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != ACTION_REFRESH) return
-        val id = intent.getIntExtra(
-            AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID
-        )
-        if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return
+private const val DOUBLE_TAP_WINDOW_MS = 340L
 
-        val app = context.applicationContext
-        val pending = goAsync()
-        val handler = Handler(Looper.getMainLooper())
+private object WidgetTapGestures {
+    private val main = Handler(Looper.getMainLooper())
+
+    private data class WaitingTap(
+        val result: BroadcastReceiver.PendingResult,
+        val singleTap: Runnable
+    )
+
+    // AppWidget IDs keep independent click sequences across multiple home widgets.
+    private val waiting = mutableMapOf<Int, WaitingTap>()
+
+    fun handle(context: Context, widgetId: Int, result: BroadcastReceiver.PendingResult) {
+        // AppWidgetProvider dispatches on the main thread; the main Handler owns this map.
+        val previous = waiting.remove(widgetId)
+        if (previous != null) {
+            main.removeCallbacks(previous.singleTap)
+            previous.result.finish()
+            try {
+                val browser = Intent(Intent.ACTION_VIEW, Uri.parse(SITE)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addCategory(Intent.CATEGORY_BROWSABLE)
+                }
+                context.startActivity(browser)
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(
+                    context, "Не вдалося відкрити сайт", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                result.finish()
+            }
+            return
+        }
+
+        val single = Runnable {
+            waiting.remove(widgetId)
+            startSingleTapRefresh(context, widgetId, result)
+        }
+        waiting[widgetId] = WaitingTap(result, single)
+        main.postDelayed(single, DOUBLE_TAP_WINDOW_MS)
+    }
+
+    private fun startSingleTapRefresh(
+        context: Context,
+        widgetId: Int,
+        result: BroadcastReceiver.PendingResult
+    ) {
         try {
-            Renderer.loadingFrame(app, id, 0)
-            // Shorter gaps and smaller radius changes make the motion feel softer.
-            // A launcher may coalesce RemoteViews updates: 60 FPS is not possible here.
+            Renderer.loadingFrame(context, widgetId, 0)
+            // Preserve the existing eight-frame transparent refresh animation.
             for (step in 1..7) {
-                handler.postDelayed({
-                    runCatching { Renderer.loadingFrame(app, id, step) }
+                main.postDelayed({
+                    runCatching { Renderer.loadingFrame(context, widgetId, step) }
                 }, step * 105L)
             }
-            handler.postDelayed({
+            main.postDelayed({
                 try {
-                    RefreshWorker.refresh(app, userInitiated = true)
+                    RefreshWorker.refresh(context, userInitiated = true)
                 } finally {
-                    pending.finish()
+                    result.finish()
                 }
             }, 880L)
         } catch (_: Exception) {
-            pending.finish()
-            RefreshWorker.refresh(app, userInitiated = true)
+            try {
+                RefreshWorker.refresh(context, userInitiated = true)
+            } finally {
+                result.finish()
+            }
         }
+    }
+}
+
+class RefreshTapReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != ACTION_REFRESH) return
+        val widgetId = intent.getIntExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID
+        )
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        WidgetTapGestures.handle(context.applicationContext, widgetId, goAsync())
     }
 }
 

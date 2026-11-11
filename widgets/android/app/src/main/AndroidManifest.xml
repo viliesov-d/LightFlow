@@ -18,11 +18,11 @@
         <receiver
             android:name=".RefreshTapReceiver"
             android:exported="false" />
-        <receiver android:name=".SmallWidgetProvider" android:exported="true" android:label="LightFlow · лампочка">
+        <receiver android:name=".SmallWidgetProvider" android:exported="true" android:label="LightFlow · 1. Лампочка" android:icon="@drawable/icon_widget_bulb">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_small_info" />
         </receiver>
-        <receiver android:name=".CompactDialWidgetProvider" android:exported="true" android:label="LightFlow · міні-графік">
+        <receiver android:name=".CompactDialWidgetProvider" android:exported="true" android:label="LightFlow · 2. Міні-графік" android:icon="@drawable/icon_widget_compact">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_compact_info" />
         </receiver>
@@ -33,7 +33,7 @@
                 <action android:name="android.intent.action.DATE_CHANGED" />
             </intent-filter>
         </receiver>
-        <receiver android:name=".LargeWidgetProvider" android:exported="true" android:label="LightFlow · великий графік">
+        <receiver android:name=".LargeWidgetProvider" android:exported="true" android:label="LightFlow · 3. Великий графік" android:icon="@drawable/icon_widget_large">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_large_info" />
         </receiver>
