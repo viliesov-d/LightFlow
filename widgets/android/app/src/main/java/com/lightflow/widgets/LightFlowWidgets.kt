@@ -2,6 +2,7 @@ package com.lightflow.widgets
 
 import android.app.Activity
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -10,9 +11,14 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -33,6 +39,10 @@ private const val SITE = "https://lightflow-api.lightflow-viliesov.workers.dev/"
 private const val RED = "#FF838B"
 private const val GREEN = "#55DFA9"
 private const val NEUTRAL = "#CAD7E7"
+private const val ACTION_REFRESH = "com.lightflow.widgets.ACTION_REFRESH_WIDGET"
+private const val PERIODIC_WORK = "LightFlowWidgetRefresh"
+private const val BOUNDARY_WORK = "LightFlowNextBoundary"
+private const val MANUAL_WORK = "LightFlowUserRefresh"
 private val KYIV: ZoneId = ZoneId.of("Europe/Kyiv")
 
 private data class Period(val start: String, val end: String, val off: Boolean)
@@ -77,10 +87,16 @@ private fun parseSchedule(raw: String): Schedule? {
     return Schedule(periods, checked)
 }
 
-private fun siteIntent(context: Context): PendingIntent {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(SITE))
-    return PendingIntent.getActivity(
-        context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+/** Widget taps are delivered directly to our app; they never launch a browser. */
+private fun refreshIntent(context: Context, widgetId: Int): PendingIntent {
+    val intent = Intent(context, RefreshTapReceiver::class.java).apply {
+        action = ACTION_REFRESH
+        putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+    }
+    return PendingIntent.getBroadcast(
+        context, widgetId, intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 }
 
@@ -121,12 +137,14 @@ private object Renderer {
                 view.setTextViewText(R.id.smallStatus, title)
                 view.setTextColor(R.id.smallStatus, color)
                 view.setTextViewText(R.id.smallInfo, info(schedule))
-                view.setOnClickPendingIntent(R.id.smallRoot, siteIntent(context))
+                view.setViewVisibility(R.id.smallLoading, View.GONE)
+                view.setOnClickPendingIntent(R.id.smallRoot, refreshIntent(context, id))
             } else {
                 view.setTextViewText(R.id.largeStatus, title)
                 view.setTextColor(R.id.largeStatus, color)
                 view.setTextViewText(R.id.largeInfo, info(schedule))
-                view.setOnClickPendingIntent(R.id.largeRoot, siteIntent(context))
+                view.setViewVisibility(R.id.largeLoading, View.GONE)
+                view.setOnClickPendingIntent(R.id.largeRoot, refreshIntent(context, id))
                 val rowIds = intArrayOf(
                     R.id.period1, R.id.period2, R.id.period3, R.id.period4, R.id.period5,
                     R.id.period6, R.id.period7, R.id.period8, R.id.period9, R.id.period10
@@ -140,7 +158,7 @@ private object Renderer {
                     } else {
                         view.setViewVisibility(rowId, View.VISIBLE)
                         if (isOverflow) {
-                            view.setTextViewText(rowId, "Ще ${periods.size - index} інтервалів — відкрити сайт")
+                            view.setTextViewText(rowId, "Ще ${periods.size - index} інтервалів — оновити дані")
                             view.setTextColor(rowId, Color.parseColor(NEUTRAL))
                         } else {
                             val period = periods[index]
@@ -158,6 +176,45 @@ private object Renderer {
     fun render(context: Context, schedule: Schedule?) {
         updateFor(context, SmallWidgetProvider::class.java, R.layout.widget_small, false, schedule)
         updateFor(context, LargeWidgetProvider::class.java, R.layout.widget_large, true, schedule)
+    }
+
+    /** Best-effort stepped ripple: launchers cannot run arbitrary continuous widget animations. */
+    fun loadingFrame(context: Context, widgetId: Int, step: Int) {
+        val manager = AppWidgetManager.getInstance(context)
+        val info = manager.getAppWidgetInfo(widgetId) ?: return
+        val large = info.provider.className == LargeWidgetProvider::class.java.name
+        if (!large && info.provider.className != SmallWidgetProvider::class.java.name) return
+
+        val remote = RemoteViews(
+            context.packageName,
+            if (large) R.layout.widget_large else R.layout.widget_small
+        )
+        val layer = if (large) R.id.largeLoading else R.id.smallLoading
+        val ripple = if (large) R.id.largeRipple else R.id.smallRipple
+        val label = if (large) R.id.largeLoadingText else R.id.smallLoadingText
+        val root = if (large) R.id.largeRoot else R.id.smallRoot
+        val frame = when (step.coerceIn(0, 3)) {
+            0 -> R.drawable.ripple_stage_1
+            1 -> R.drawable.ripple_stage_2
+            2 -> R.drawable.ripple_stage_3
+            else -> R.drawable.ripple_stage_4
+        }
+        remote.setViewVisibility(layer, View.VISIBLE)
+        remote.setImageViewResource(ripple, frame)
+        remote.setTextViewText(label, when (step) {
+            0 -> " "
+            1 -> "Оновлюємо…"
+            2 -> "Оновлюємо графік…"
+            else -> "Перевіряємо дані…"
+        })
+        remote.setTextColor(label, Color.parseColor(when (step) {
+            0 -> "#152236"
+            1 -> "#849CB3"
+            2 -> "#C1DED7"
+            else -> "#FFFFFF"
+        }))
+        remote.setOnClickPendingIntent(root, refreshIntent(context, widgetId))
+        manager.updateAppWidget(widgetId, remote)
     }
 }
 
@@ -187,21 +244,102 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
             null
         }
         Renderer.render(applicationContext, schedule)
+        scheduleNextBoundary(applicationContext, schedule)
         return Result.success()
     }
 
     companion object {
         private fun workManager(context: Context) = WorkManager.getInstance(context.applicationContext)
 
+        /** Android requires >=15 min periodic work; the change-boundary job is an extra check. */
         fun schedule(context: Context) {
             val periodic = PeriodicWorkRequestBuilder<RefreshWorker>(15, TimeUnit.MINUTES).build()
             workManager(context).enqueueUniquePeriodicWork(
-                "LightFlowWidgetRefresh", ExistingPeriodicWorkPolicy.KEEP, periodic
+                PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, periodic
             )
             refresh(context)
         }
-        fun refresh(context: Context) {
-            workManager(context).enqueue(OneTimeWorkRequestBuilder<RefreshWorker>().build())
+
+        fun refresh(context: Context, userInitiated: Boolean = false) {
+            val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+            // Before Android 12, expedited WorkManager jobs require a foreground service
+            // and notification. The standard one-time request is safe for those devices.
+            if (userInitiated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                request.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            }
+            val uniqueName = if (userInitiated) MANUAL_WORK else "LightFlowInitialRefresh"
+            workManager(context).enqueueUniqueWork(
+                uniqueName, ExistingWorkPolicy.KEEP, request.build()
+            )
+        }
+
+        /** Best-effort extra online check near the next published state change. */
+        private fun scheduleNextBoundary(context: Context, schedule: Schedule?) {
+            val manager = workManager(context)
+            if (schedule == null) {
+                manager.cancelUniqueWork(BOUNDARY_WORK)
+                return
+            }
+            val clock = ZonedDateTime.now(KYIV)
+            val currentMinutes = clock.hour * 60 + clock.minute
+            val next = schedule.periods.mapNotNull { minutes(it.end) }
+                .firstOrNull { it > currentMinutes && it < 1440 }
+            if (next == null) {
+                manager.cancelUniqueWork(BOUNDARY_WORK)
+                return
+            }
+            val target = LocalDate.now(KYIV)
+                .atTime(next / 60, next % 60)
+                .atZone(KYIV).toInstant().plusSeconds(5)
+            val delay = Duration.between(Instant.now(), target).toMillis().coerceAtLeast(1000L)
+            val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+                .setInitialDelay(delay, TimeUnit.MILLISECONDS).build()
+            manager.enqueueUniqueWork(BOUNDARY_WORK, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        fun stopIfNoWidgets(context: Context) {
+            val manager = AppWidgetManager.getInstance(context)
+            val small = manager.getAppWidgetIds(ComponentName(context, SmallWidgetProvider::class.java))
+            val large = manager.getAppWidgetIds(ComponentName(context, LargeWidgetProvider::class.java))
+            if (small.isEmpty() && large.isEmpty()) {
+                workManager(context).cancelUniqueWork(PERIODIC_WORK)
+                workManager(context).cancelUniqueWork(BOUNDARY_WORK)
+            }
+        }
+    }
+}
+
+/**
+ * A home-screen RemoteViews click carries widget ID but not the exact touch coordinates.
+ * Four GPU-friendly vector frames approximate a wave spreading from the widget centre.
+ * The update starts only after the label has appeared. No Activity/browser is launched.
+ */
+class RefreshTapReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != ACTION_REFRESH) return
+        val id = intent.getIntExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID
+        )
+        if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return
+
+        val app = context.applicationContext
+        val pending = goAsync()
+        val handler = Handler(Looper.getMainLooper())
+        try {
+            Renderer.loadingFrame(app, id, 0)
+            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 1) } }, 160L)
+            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 2) } }, 360L)
+            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 3) } }, 600L)
+            handler.postDelayed({
+                try {
+                    RefreshWorker.refresh(app, userInitiated = true)
+                } finally {
+                    pending.finish()
+                }
+            }, 790L)
+        } catch (_: Exception) {
+            pending.finish()
+            RefreshWorker.refresh(app, userInitiated = true)
         }
     }
 }
@@ -209,15 +347,19 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
 class SmallWidgetProvider : AppWidgetProvider() {
     override fun onEnabled(context: Context) { RefreshWorker.schedule(context) }
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        Renderer.render(context, null)
         RefreshWorker.schedule(context)
     }
+    override fun onDisabled(context: Context) { RefreshWorker.stopIfNoWidgets(context) }
 }
 
 class LargeWidgetProvider : AppWidgetProvider() {
     override fun onEnabled(context: Context) { RefreshWorker.schedule(context) }
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        Renderer.render(context, null)
         RefreshWorker.schedule(context)
     }
+    override fun onDisabled(context: Context) { RefreshWorker.stopIfNoWidgets(context) }
 }
 
 class OpenSiteActivity : Activity() {

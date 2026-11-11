@@ -1,36 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/smallRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="12dp"
     android:background="@drawable/widget_background">
-    <TextView
+
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="⚡ LightFlow · 1.1"
-        android:textColor="#F9FBFF"
-        android:textSize="12sp"
-        android:textStyle="bold"/>
-    <TextView android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="12dp">
     <TextView
-        android:id="@+id/smallStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚡ LightFlow · 1.1"
+            android:textColor="#F9FBFF"
+            android:textSize="12sp"
+            android:textStyle="bold"/>
+        <TextView android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
+        <TextView
+            android:id="@+id/smallStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Перевіряємо…"
+            android:textColor="#E8F1FF"
+            android:textSize="18sp"
+            android:maxLines="2"
+            android:textStyle="bold"/>
+        <TextView
+            android:id="@+id/smallInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="За графіком"
+            android:textColor="#B9C9DB"
+            android:textSize="10sp"
+            android:maxLines="2"/>
+        <TextView android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
+    </LinearLayout>
+
+    <!-- Full-widget transparent overlay. The launcher only supports RemoteViews classes. -->
+    <FrameLayout
+        android:id="@+id/smallLoading"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Перевіряємо…"
-        android:textColor="#E8F1FF"
-        android:textSize="18sp"
-        android:maxLines="2"
-        android:textStyle="bold"/>
-    <TextView
-        android:id="@+id/smallInfo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="За графіком"
-        android:textColor="#B9C9DB"
-        android:textSize="10sp"
-        android:maxLines="2"/>
-    <TextView android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
-</LinearLayout>
+        android:layout_height="match_parent"
+        android:background="#F016253A"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/smallRipple"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:src="@drawable/ripple_stage_1"
+            android:contentDescription="@null"/>
+
+        <TextView
+            android:id="@+id/smallLoadingText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:gravity="center"
+            android:text="Оновлюємо…"
+            android:textColor="#F4F8FF"
+            android:textStyle="bold"
+            android:textSize="12sp"
+            android:maxLines="2"/>
+    </FrameLayout>
+</FrameLayout>
