@@ -96,61 +96,80 @@ internal object WidgetArt {
         val interval=if(state==null) "--:--–--:--" else state.start+"–"+state.end
         write(c,interval,x,h*.855f,side*.084f,text,medium)
     }
-    private fun strip(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
+    private fun strip(c: Canvas,w: Float,h: Float,data: Schedule?,now: ZonedDateTime) {
         val current=nowPeriod(data,now)
         val periods=data?.periods.orEmpty()
-        val i=periods.indexOf(current)
-        val center=w*.5f
-        val segmentWidth=w*.66f  // 66% of the visible carousel.
-        val gap=w*.018f
-        // Quiet status above, with a slimmer, time-only carousel below.
-        val accent=when(current?.off){true->red;false->green;null->muted}
-        c.drawCircle(w*.068f,h*.223f,h*.024f,paint(accent))
-        val status=when(current?.off){
+        val index=periods.indexOf(current)
+        val accent=when(current?.off) {true->red;false->green;null->gray}
+        val status=when(current?.off) {
             true->"Відключення"
             false->"Є світло"
-            null->"Немає актуального графіка"
+            null->"Немає актуальних даних"
         }
-        c.drawText(status,w*.093f,h*.273f,paint(text).apply {
-            textSize=h*.145f
+        // The chosen reference: quiet left-aligned title above slim, glowing pills.
+        c.drawCircle(w*.067f,h*.226f,h*.024f,paint(accent))
+        c.drawText(status,w*.099f,h*.287f,paint(text).apply {
+            textSize=h*.157f
             typeface=medium
         })
-        val top=h*.375f
-        val bottom=h*.725f
+        val center=w*.5f
+        val segmentWidth=w*.66f   // 66% of visible carousel width.
+        val gap=w*.016f
+        val top=h*.391f
+        val bottom=h*.707f
+        val radius=(bottom-top)*.47f
         c.save()
-        c.clipRect(w*.025f,top,w*.975f,bottom)
-        if(i<0) {
-            c.drawRoundRect(w*.17f,top,w*.83f,bottom,h*.10f,h*.10f,paint(edge))
-            write(c,"--:--–--:--",center,h*.595f,h*.16f,text,medium)
+        c.clipRect(w*.023f,top-4f,w*.977f,bottom+4f)
+        if(index<0) {
+            c.drawRoundRect(center-segmentWidth*.5f,top,
+                center+segmentWidth*.5f,bottom,radius,radius,paint(edge))
+            write(c,"--:--–--:--",center,h*.594f,h*.17f,text,medium)
         } else {
             val start=minutes(current!!.start) ?: 0
             val end=minutes(current.end) ?: 1440
             val time=now.hour*60f+now.minute+now.second/60f
             val progress=((time-start)/(end-start).coerceAtLeast(1)).coerceIn(0f,1f)
-            val left=center-progress*segmentWidth
-            for(index in periods.indices) {
-                if(index<i-3 || index>i+3)continue
-                val period=periods[index]
-                val x=left+(index-i)*(segmentWidth+gap)
+            // Fixed central pointer, while cards glide slowly according to phone time.
+            // This keeps the current 66%-width block mostly in view, unlike the old clipping.
+            val activeLeft=(w-segmentWidth)*.5f+(.5f-progress)*w*.25f
+            for(i in periods.indices) {
+                if(i<index-2||i>index+2)continue
+                val segment=periods[i]
+                val x=activeLeft+(i-index)*(segmentWidth+gap)
                 if(x>w||x+segmentWidth<0f)continue
-                val fill=if(period.off)Color.rgb(185,77,91) else Color.rgb(37,145,113)
-                val outline=if(period.off)red else green
-                val radius=h*.10f
-                c.drawRoundRect(x,top,x+segmentWidth,bottom,radius,radius,paint(fill))
-                c.drawRoundRect(x+1.5f,top+1.5f,x+segmentWidth-1.5f,bottom-1.5f,
-                    radius,radius,paint(if(index==i)outline else Color.argb(80,246,250,255),
-                        if(index==i)2.8f else 1.2f,Paint.Style.STROKE))
-                // Inside the block: only the exact hours, no second label.
-                write(c,period.start+"–"+period.end,x+segmentWidth*.5f,
-                    top+(bottom-top)*.67f,h*.158f,text,bold)
+                val active=i==index
+                val accentColor=if(segment.off)red else green
+                val leftFill=if(segment.off)Color.rgb(231,119,132) else Color.rgb(122,237,190)
+                val rightFill=if(segment.off)Color.rgb(175,75,92) else Color.rgb(55,191,147)
+                val rect=RectF(x,top,x+segmentWidth,bottom)
+                if(active) {
+                    c.drawRoundRect(rect,radius,radius,
+                        paint(accentColor,2.4f,Paint.Style.STROKE).apply {
+                            setShadowLayer(h*.062f,0f,0f,accentColor)
+                        })
+                }
+                c.drawRoundRect(rect,radius,radius,paint(leftFill).apply {
+                    shader=LinearGradient(x,top,x+segmentWidth,bottom,
+                        leftFill,rightFill,Shader.TileMode.CLAMP)
+                    alpha=if(active)255 else 185
+                })
+                c.drawRoundRect(RectF(x+1.4f,top+1.4f,x+segmentWidth-1.4f,bottom-1.4f),
+                    radius,radius,paint(if(active)Color.argb(195,250,255,253)
+                        else Color.argb(103,243,239,243),
+                        if(active)2.3f else 1.1f,Paint.Style.STROKE))
+                // Only exact hours inside each capsule, no second status line.
+                val timeColor=if(segment.off)text else Color.rgb(18,57,47)
+                write(c,segment.start+"–"+segment.end,
+                    x+segmentWidth*.5f,top+(bottom-top)*.67f,
+                    h*.18f,timeColor,if(active)bold else medium)
             }
         }
         c.restore()
-        // Fixed subtle marker below the carousel. Time segments move under it.
+        // The arrow is separate from the moving timeline, always in the same place.
         val arrow=Path().apply {
-            moveTo(center,h*.783f)
-            lineTo(center-h*.034f,h*.831f)
-            lineTo(center+h*.034f,h*.831f)
+            moveTo(center,h*.757f)
+            lineTo(center-h*.044f,h*.812f)
+            lineTo(center+h*.044f,h*.812f)
             close()
         }
         c.drawPath(arrow,paint(accent))
