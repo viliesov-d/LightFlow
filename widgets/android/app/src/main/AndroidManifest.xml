@@ -18,7 +18,7 @@
         <receiver
             android:name=".RefreshTapReceiver"
             android:exported="false" />
-        <receiver android:name=".SmallWidgetProvider" android:exported="true" android:label="LightFlow · статус">
+        <receiver android:name=".SmallWidgetProvider" android:exported="true" android:label="LightFlow · лампочка">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_small_info" />
         </receiver>
@@ -33,7 +33,7 @@
                 <action android:name="android.intent.action.DATE_CHANGED" />
             </intent-filter>
         </receiver>
-        <receiver android:name=".LargeWidgetProvider" android:exported="true" android:label="LightFlow · графік">
+        <receiver android:name=".LargeWidgetProvider" android:exported="true" android:label="LightFlow · великий графік">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_large_info" />
         </receiver>
