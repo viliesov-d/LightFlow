@@ -2,6 +2,7 @@ package com.lightflow.widgets
 
 import android.app.Activity
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -10,9 +11,14 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -33,6 +39,10 @@ private const val SITE = "https://lightflow-api.lightflow-viliesov.workers.dev/"
 private const val RED = "#FF838B"
 private const val GREEN = "#55DFA9"
 private const val NEUTRAL = "#CAD7E7"
+private const val ACTION_REFRESH = "com.lightflow.widgets.ACTION_REFRESH_WIDGET"
+private const val PERIODIC_WORK = "LightFlowWidgetRefresh"
+private const val BOUNDARY_WORK = "LightFlowNextBoundary"
+private const val MANUAL_WORK = "LightFlowUserRefresh"
 private val KYIV: ZoneId = ZoneId.of("Europe/Kyiv")
 
 private data class Period(val start: String, val end: String, val off: Boolean)
@@ -77,10 +87,16 @@ private fun parseSchedule(raw: String): Schedule? {
     return Schedule(periods, checked)
 }
 
-private fun siteIntent(context: Context): PendingIntent {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(SITE))
-    return PendingIntent.getActivity(
-        context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+/** Widget taps are delivered directly to our app; they never launch a browser. */
+private fun refreshIntent(context: Context, widgetId: Int): PendingIntent {
+    val intent = Intent(context, RefreshTapReceiver::class.java).apply {
+        action = ACTION_REFRESH
+        putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+    }
+    return PendingIntent.getBroadcast(
+        context, widgetId, intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 }
 
@@ -121,12 +137,14 @@ private object Renderer {
                 view.setTextViewText(R.id.smallStatus, title)
                 view.setTextColor(R.id.smallStatus, color)
                 view.setTextViewText(R.id.smallInfo, info(schedule))
-                view.setOnClickPendingIntent(R.id.smallRoot, siteIntent(context))
+                view.setViewVisibility(R.id.smallLoading, View.GONE)
+                view.setOnClickPendingIntent(R.id.smallRoot, refreshIntent(context, id))
             } else {
                 view.setTextViewText(R.id.largeStatus, title)
                 view.setTextColor(R.id.largeStatus, color)
                 view.setTextViewText(R.id.largeInfo, info(schedule))
-                view.setOnClickPendingIntent(R.id.largeRoot, siteIntent(context))
+                view.setViewVisibility(R.id.largeLoading, View.GONE)
+                view.setOnClickPendingIntent(R.id.largeRoot, refreshIntent(context, id))
                 val rowIds = intArrayOf(
                     R.id.period1, R.id.period2, R.id.period3, R.id.period4, R.id.period5,
                     R.id.period6, R.id.period7, R.id.period8, R.id.period9, R.id.period10
@@ -140,7 +158,7 @@ private object Renderer {
                     } else {
                         view.setViewVisibility(rowId, View.VISIBLE)
                         if (isOverflow) {
-                            view.setTextViewText(rowId, "Ще ${periods.size - index} інтервалів — відкрити сайт")
+                            view.setTextViewText(rowId, "Ще ${periods.size - index} інтервалів — оновити дані")
                             view.setTextColor(rowId, Color.parseColor(NEUTRAL))
                         } else {
                             val period = periods[index]
@@ -158,6 +176,45 @@ private object Renderer {
     fun render(context: Context, schedule: Schedule?) {
         updateFor(context, SmallWidgetProvider::class.java, R.layout.widget_small, false, schedule)
         updateFor(context, LargeWidgetProvider::class.java, R.layout.widget_large, true, schedule)
+    }
+
+    /** Best-effort stepped ripple: launchers cannot run arbitrary continuous widget animations. */
+    fun loadingFrame(context: Context, widgetId: Int, step: Int) {
+        val manager = AppWidgetManager.getInstance(context)
+        val info = manager.getAppWidgetInfo(widgetId) ?: return
+        val large = info.provider.className == LargeWidgetProvider::class.java.name
+        if (!large && info.provider.className != SmallWidgetProvider::class.java.name) return
+
+        val remote = RemoteViews(
+            context.packageName,
+            if (large) R.layout.widget_large else R.layout.widget_small
+        )
+        val layer = if (large) R.id.largeLoading else R.id.smallLoading
+        val ripple = if (large) R.id.largeRipple else R.id.smallRipple
+        val label = if (large) R.id.largeLoadingText else R.id.smallLoadingText
+        val root = if (large) R.id.largeRoot else R.id.smallRoot
+        val frame = when (step.coerceIn(0, 3)) {
+            0 -> R.drawable.ripple_stage_1
+            1 -> R.drawable.ripple_stage_2
+            2 -> R.drawable.ripple_stage_3
+            else -> R.drawable.ripple_stage_4
+        }
+        remote.setViewVisibility(layer, View.VISIBLE)
+        remote.setImageViewResource(ripple, frame)
+        remote.setTextViewText(label, when (step) {
+            0 -> " "
+            1 -> "Оновлюємо…"
+            2 -> "Оновлюємо графік…"
+            else -> "Перевіряємо дані…"
+        })
+        remote.setTextColor(label, Color.parseColor(when (step) {
+            0 -> "#152236"
+            1 -> "#849CB3"
+            2 -> "#C1DED7"
+            else -> "#FFFFFF"
+        }))
+        remote.setOnClickPendingIntent(root, refreshIntent(context, widgetId))
+        manager.updateAppWidget(widgetId, remote)
     }
 }
 
