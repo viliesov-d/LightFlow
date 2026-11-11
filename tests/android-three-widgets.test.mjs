@@ -67,6 +67,6 @@ test('transparent art, regular refresh and best-effort clock updates are unchang
 
 test('new installation version',()=>{
   const gradle=readFileSync('widgets/android/app/build.gradle.kts','utf8');
-  assert.match(gradle,/versionName = "0\.5\.1"/);
-  assert.match(gradle,/versionCode = 9/);
+  assert.match(gradle,/versionName = "0\.5\.2"/);
+  assert.match(gradle,/versionCode = 10/);
 });
