@@ -16,14 +16,14 @@
         android:id="@+id/largeLoading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F0121C2B"
+        android:background="@drawable/widget_loading_background"
         android:visibility="gone">
 
         <ImageView
             android:id="@+id/largeRipple"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="fitXY"
+            android:scaleType="fitCenter"
             android:src="@drawable/ripple_stage_1"
             android:contentDescription="@null"/>
 

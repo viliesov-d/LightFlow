@@ -150,25 +150,31 @@ private object Renderer {
         val info = manager.getAppWidgetInfo(widgetId) ?: return
         val config = layouts.firstOrNull { it.provider.name == info.provider.className } ?: return
         val views = RemoteViews(context.packageName, config.resource)
-        val frame = when(step.coerceIn(0,3)) {
+        val frame = when(step.coerceIn(0,7)) {
             0 -> R.drawable.ripple_stage_1
             1 -> R.drawable.ripple_stage_2
             2 -> R.drawable.ripple_stage_3
-            else -> R.drawable.ripple_stage_4
+            3 -> R.drawable.ripple_stage_4
+            4 -> R.drawable.ripple_stage_5
+            5 -> R.drawable.ripple_stage_6
+            6 -> R.drawable.ripple_stage_7
+            else -> R.drawable.ripple_stage_8
         }
         views.setViewVisibility(config.loading, View.VISIBLE)
         views.setImageViewResource(config.ripple, frame)
         views.setTextViewText(config.label, when(step) {
             0 -> " "
-            1 -> "Оновлюємо…"
-            2 -> "Оновлюємо графік…"
+            in 1..3 -> "Оновлюємо…"
+            in 4..6 -> "Оновлюємо графік…"
             else -> "Перевіряємо дані…"
         })
+        // Text brightens over consecutive frames; the background keeps its rounded shape.
         views.setTextColor(config.label, Color.parseColor(when(step) {
-            0 -> "#152236"
-            1 -> "#849CB3"
-            2 -> "#C1DED7"
-            else -> "#FFFFFF"
+            0 -> "#0E1928"
+            1 -> "#718DA6"
+            2 -> "#91B3BE"
+            3 -> "#BEDACF"
+            else -> "#F8FBFF"
         }))
         // Lightweight frame update preserves prior artwork in RemoteViews.
         // Never partiallyUpdateAppWidget with a new bitmap (bitmap memory leak risk).
@@ -273,7 +279,7 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
 
 /**
  * A home-screen RemoteViews click carries widget ID but not the exact touch coordinates.
- * Four GPU-friendly vector frames approximate a wave spreading from the widget centre.
+ * Eight gentle vector frames approximate a ripple spreading from the widget centre.
  * The update starts only after the label has appeared. No Activity/browser is launched.
  */
 class RefreshTapReceiver : BroadcastReceiver() {
@@ -289,16 +295,20 @@ class RefreshTapReceiver : BroadcastReceiver() {
         val handler = Handler(Looper.getMainLooper())
         try {
             Renderer.loadingFrame(app, id, 0)
-            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 1) } }, 160L)
-            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 2) } }, 360L)
-            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 3) } }, 600L)
+            // Shorter gaps and smaller radius changes make the motion feel softer.
+            // A launcher may coalesce RemoteViews updates: 60 FPS is not possible here.
+            for (step in 1..7) {
+                handler.postDelayed({
+                    runCatching { Renderer.loadingFrame(app, id, step) }
+                }, step * 105L)
+            }
             handler.postDelayed({
                 try {
                     RefreshWorker.refresh(app, userInitiated = true)
                 } finally {
                     pending.finish()
                 }
-            }, 790L)
+            }, 880L)
         } catch (_: Exception) {
             pending.finish()
             RefreshWorker.refresh(app, userInitiated = true)

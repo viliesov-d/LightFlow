@@ -14,6 +14,8 @@ for(const size of ['small','medium','large']) {
     assert.match(xml,new RegExp('android:id="@\\+id/'+size+'Ripple"'));
     assert.match(xml,new RegExp('android:id="@\\+id/'+size+'LoadingText"'));
     assert.match(xml,/android:visibility="gone"/);
+    assert.match(xml,/android:background="@drawable\/widget_loading_background"/);
+    assert.doesNotMatch(xml,/android:background="#F0/);
     assert.match(xml,/<FrameLayout/);
     assert.match(xml,/<ImageView/);
     assert.doesNotMatch(xml,/<Space\b/);
@@ -32,14 +34,28 @@ test('only the app can receive widget tap broadcasts',()=>{
 });
 test('ripple frames use Android supported vectors, and labels appear after tap',()=>{
   assert.match(kotlin,/loadingFrame\(app, id, 0\)/);
-  for(let i=1;i<=3;i++)assert.match(kotlin,new RegExp('loadingFrame\\(app, id, '+i+'\\)'));
+  assert.match(kotlin,/for \(step in 1\.\.7\)/);
+  assert.match(kotlin,/loadingFrame\(app, id, step\)/);
+  assert.match(kotlin,/step \* 105L/);
   assert.match(kotlin,/RefreshWorker\.refresh\(app, userInitiated = true\)/);
   assert.match(kotlin,/setImageViewResource\(config\.ripple, frame\)/);
-  for(let i=1;i<=4;i++) {
+  for(let i=1;i<=8;i++) {
     const xml=readFileSync(android+'res/drawable/ripple_stage_'+i+'.xml','utf8');
     assert.match(xml,/<vector/);
     assert.match(xml,/<path/);
     assert.match(xml,/android:strokeColor=/);
+    assert.match(xml,/#F9D370/);
+  }
+});
+test('loading background has matching rounded corners with no square overlay',()=>{
+  const base=readFileSync(android+'res/drawable/widget_background.xml','utf8');
+  const loading=readFileSync(android+'res/drawable/widget_loading_background.xml','utf8');
+  const radius=/<corners android:radius="([^"]+)"\/>/;
+  assert.equal(loading.match(radius)?.[1],base.match(radius)?.[1]);
+  assert.ok(loading.includes('android:color="#F50E1928"'));
+  for(const kind of ['small','medium','large']) {
+    const view=readFileSync(android+'res/layout/widget_'+kind+'.xml','utf8');
+    assert.match(view,/android:scaleType="fitCenter"/);
   }
 });
 test('Android background refresh includes next-change one-shot job',()=>{
