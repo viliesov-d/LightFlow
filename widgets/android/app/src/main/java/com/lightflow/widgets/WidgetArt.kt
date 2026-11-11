@@ -9,14 +9,16 @@ import kotlin.math.*
 /** The only RemoteViews child is an ImageView: all detail is safely drawn off-screen. */
 internal object WidgetArt {
     enum class Kind { BULB, CAROUSEL, DIAL }
-    private val bg=Color.rgb(14,25,40)
-    private val edge=Color.rgb(45,70,91)
-    private val text=Color.rgb(248,251,255)
-    private val muted=Color.rgb(170,190,209)
-    private val green=Color.rgb(98,229,179)
-    private val red=Color.rgb(255,130,140)
-    private val gray=Color.rgb(144,160,179)
-    private val amber=Color.rgb(249,211,112)
+    private val bg=Color.rgb(15,27,42)
+    private val bgHighlight=Color.rgb(26,45,64)
+    private val edge=Color.rgb(78,101,123)
+    private val text=Color.rgb(248,250,255)
+    private val muted=Color.rgb(173,193,210)
+    private val green=Color.rgb(108,231,186)
+    private val red=Color.rgb(242,118,131)
+    private val gray=Color.rgb(138,156,174)
+    private val amber=Color.rgb(255,186,57)
+    private val gold=Color.rgb(255,211,131)
     private val font=Typeface.create("sans-serif",Typeface.NORMAL)
     private val medium=Typeface.create("sans-serif-medium",Typeface.NORMAL)
     private val bold=Typeface.create("sans-serif",Typeface.BOLD)
@@ -40,43 +42,59 @@ internal object WidgetArt {
             current>=from && current<to
         }
     }
-    private fun base(c:Canvas,w:Float,h:Float) {
-        val r=min(w,h)*.110f
-        c.drawRoundRect(1f,1f,w-1f,h-1f,r,r,paint(bg))
-        c.drawRoundRect(2f,2f,w-2f,h-2f,r,r,paint(edge,1.25f,Paint.Style.STROKE))
-    }
-    private fun bulb(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
-        val state=nowPeriod(data,now)
-        val accent=if(state==null) gray else if(state.off) red else green
-        val side=min(w,h); val x=w*.5f; val y=h*.385f; val r=side*.166f
-        val outline=Path().apply {
-            moveTo(x-r*.73f,y+r*.65f)
-            cubicTo(x-r*1.85f,y-r*.25f,x-r*.94f,y-r*1.88f,x,y-r*1.82f)
-            cubicTo(x+r*.94f,y-r*1.88f,x+r*1.85f,y-r*.25f,x+r*.73f,y+r*.65f)
-            cubicTo(x+r*.42f,y+r*.97f,x+r*.28f,y+r*1.1f,x+r*.28f,y+r*1.24f)
-            lineTo(x-r*.28f,y+r*1.24f)
-            cubicTo(x-r*.28f,y+r*1.1f,x-r*.42f,y+r*.97f,x-r*.73f,y+r*.65f)
-            close()
-        }
-        c.drawPath(outline,paint(accent,side*.012f,Paint.Style.STROKE).apply {
-            setShadowLayer(side*.019f,0f,0f,accent)
+    private fun base(c: Canvas, w: Float, h: Float) {
+        val radius = min(w,h)*.118f
+        val rect = RectF(1.5f,1.5f,w-1.5f,h-1.5f)
+        c.drawRoundRect(rect,radius,radius,paint(bg).apply {
+            shader = LinearGradient(0f,0f,w,h,
+                intArrayOf(bgHighlight,bg,Color.rgb(12,24,38)),
+                floatArrayOf(0f,.53f,1f),Shader.TileMode.CLAMP)
         })
-        val lightning=Path().apply {
-            moveTo(x+r*.1f,y-r*.83f)
-            lineTo(x-r*.34f,y+r*.06f)
-            lineTo(x-r*.05f,y+r*.06f)
-            lineTo(x-r*.16f,y+r*.64f)
-            lineTo(x+r*.40f,y-r*.26f)
-            lineTo(x+r*.07f,y-r*.26f)
+        c.drawRoundRect(rect,radius,radius,paint(edge,1.7f,Paint.Style.STROKE))
+    }
+
+    private fun bulb(c: Canvas,w: Float,h: Float,data: Schedule?,now: ZonedDateTime) {
+        val state=nowPeriod(data,now)
+        val accent=when(state?.off) { true->red;false->gold;null->gray }
+        val boltColor=if(state==null)gray else amber
+        val side=min(w,h); val x=w*.5f; val y=h*.393f; val r=side*.166f
+        // A restrained halo behind a crisp, symmetric glass outline.
+        c.drawCircle(x,y-r*.23f,r*1.8f,paint(Color.TRANSPARENT).apply {
+            shader=RadialGradient(x,y-r*.23f,r*1.8f,
+                intArrayOf(Color.argb(52,Color.red(accent),Color.green(accent),
+                    Color.blue(accent)),Color.TRANSPARENT),
+                null,Shader.TileMode.CLAMP)
+        })
+        val glass=Path().apply {
+            moveTo(x-r*.64f,y+r*.62f)
+            cubicTo(x-r*1.74f,y-r*.35f,x-r*1.06f,y-r*1.77f,x,y-r*1.76f)
+            cubicTo(x+r*1.06f,y-r*1.77f,x+r*1.74f,y-r*.35f,x+r*.64f,y+r*.62f)
+            cubicTo(x+r*.41f,y+r*.88f,x+r*.34f,y+r*1.02f,x+r*.34f,y+r*1.14f)
+            lineTo(x-r*.34f,y+r*1.14f)
+            cubicTo(x-r*.34f,y+r*1.02f,x-r*.41f,y+r*.88f,x-r*.64f,y+r*.62f)
             close()
         }
-        c.drawPath(lightning,paint(amber))
-        for(i in 0..2)c.drawLine(x-r*.32f,y+r*(1.42f+i*.20f),
-                              x+r*.32f,y+r*(1.42f+i*.20f),
-                              paint(accent,side*.011f))
-        // Deliberately nothing else: bulb, and a time interval below it.
-        write(c, if(state==null) "--:--–--:--" else state.start+"–"+state.end,
-              x,h*.85f,side*.080f,text,medium)
+        c.drawPath(glass,paint(accent,side*.0115f,Paint.Style.STROKE).apply {
+            setShadowLayer(side*.022f,0f,0f,accent)
+        })
+        val bolt=Path().apply {
+            moveTo(x+r*.09f,y-r*.84f)
+            lineTo(x-r*.38f,y+r*.12f)
+            lineTo(x-r*.06f,y+r*.12f)
+            lineTo(x-r*.16f,y+r*.70f)
+            lineTo(x+r*.40f,y-r*.29f)
+            lineTo(x+r*.07f,y-r*.29f)
+            close()
+        }
+        c.drawPath(bolt,paint(boltColor))
+        for(i in 0..1) {
+            c.drawLine(x-r*.37f,y+r*(1.33f+i*.20f),
+                x+r*.37f,y+r*(1.33f+i*.20f),
+                paint(accent,side*.012f))
+        }
+        // No header or status caption: exactly one time interval below the bulb.
+        val interval=if(state==null) "--:--–--:--" else state.start+"–"+state.end
+        write(c,interval,x,h*.855f,side*.084f,text,medium)
     }
     private fun strip(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
         val current=nowPeriod(data,now)
