@@ -5,167 +5,18 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background">
 
-    <LinearLayout
+    <ImageView
+        android:id="@+id/largeArtwork"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="14dp">
-    <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="⚡ LightFlow · Черкаська 1.1"
-            android:textColor="#F9FBFF"
-            android:textStyle="bold"
-            android:textSize="15sp"/>
-        <TextView
-            android:id="@+id/largeStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Перевіряємо…"
-            android:textColor="#F9FBFF"
-            android:textStyle="bold"
-            android:textSize="18sp"
-            android:layout_marginTop="7dp"/>
-        <TextView
-            android:id="@+id/largeInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Графік на сьогодні"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"
-            android:layout_marginTop="3dp"/>
-        <TextView android:layout_width="1dp" android:layout_height="8dp"/>
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-        <TextView
-            android:id="@+id/period1"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period2"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period3"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period4"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period5"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period6"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period7"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period8"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period9"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        <TextView
-            android:id="@+id/period10"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:text="—"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"/>
-        </LinearLayout>
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Червоний — немає світла · Зелений — є за графіком"
-            android:textColor="#8FA3BC"
-            android:textSize="9sp"
-            android:maxLines="2"/>
-    </LinearLayout>
+        android:scaleType="fitCenter"
+        android:contentDescription="@null" />
 
-    <!-- Full-widget transparent overlay. The launcher only supports RemoteViews classes. -->
     <FrameLayout
         android:id="@+id/largeLoading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F016253A"
+        android:background="#F0121C2B"
         android:visibility="gone">
 
         <ImageView
@@ -181,12 +32,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="22dp"
+            android:layout_marginBottom="13dp"
             android:gravity="center"
             android:text="Оновлюємо…"
             android:textColor="#F4F8FF"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:textSize="16sp"
-            android:maxLines="2"/>
+            android:maxLines="1" />
     </FrameLayout>
 </FrameLayout>

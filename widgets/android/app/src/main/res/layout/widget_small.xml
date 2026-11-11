@@ -5,46 +5,18 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background">
 
-    <LinearLayout
+    <ImageView
+        android:id="@+id/smallArtwork"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="12dp">
-    <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="⚡ LightFlow · 1.1"
-            android:textColor="#F9FBFF"
-            android:textSize="12sp"
-            android:textStyle="bold"/>
-        <TextView android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
-        <TextView
-            android:id="@+id/smallStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Перевіряємо…"
-            android:textColor="#E8F1FF"
-            android:textSize="18sp"
-            android:maxLines="2"
-            android:textStyle="bold"/>
-        <TextView
-            android:id="@+id/smallInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="За графіком"
-            android:textColor="#B9C9DB"
-            android:textSize="10sp"
-            android:maxLines="2"/>
-        <TextView android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
-    </LinearLayout>
+        android:scaleType="fitCenter"
+        android:contentDescription="@null" />
 
-    <!-- Full-widget transparent overlay. The launcher only supports RemoteViews classes. -->
     <FrameLayout
         android:id="@+id/smallLoading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F016253A"
+        android:background="#F0121C2B"
         android:visibility="gone">
 
         <ImageView
@@ -60,12 +32,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="10dp"
+            android:layout_marginBottom="13dp"
             android:gravity="center"
             android:text="Оновлюємо…"
             android:textColor="#F4F8FF"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:textSize="12sp"
-            android:maxLines="2"/>
+            android:maxLines="1" />
     </FrameLayout>
 </FrameLayout>
