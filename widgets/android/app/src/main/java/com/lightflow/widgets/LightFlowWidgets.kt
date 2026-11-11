@@ -177,6 +177,11 @@ private object Renderer {
         // This avoids text/ring collisions and never introduces a square background.
         views.setViewVisibility(config.artwork, View.INVISIBLE)
         views.setViewVisibility(config.loading, View.VISIBLE)
+        // The overlay covers the whole widget: without this click target,
+        // a second tap during the ripple can be swallowed by the launcher.
+        views.setOnClickPendingIntent(config.loading, refreshIntent(context, widgetId))
+        views.setOnClickPendingIntent(config.ripple, refreshIntent(context, widgetId))
+        views.setOnClickPendingIntent(config.label, refreshIntent(context, widgetId))
         views.setImageViewResource(config.ripple, frame)
         views.setTextViewText(config.label, when(step) {
             0 -> " "
