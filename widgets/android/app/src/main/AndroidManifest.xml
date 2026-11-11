@@ -22,9 +22,9 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_small_info" />
         </receiver>
-        <receiver android:name=".MediumWidgetProvider" android:exported="true" android:label="LightFlow · карусель">
+        <receiver android:name=".CompactDialWidgetProvider" android:exported="true" android:label="LightFlow · міні-графік">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_medium_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_compact_info" />
         </receiver>
         <receiver android:name=".WidgetClockReceiver" android:exported="false">
             <intent-filter>
