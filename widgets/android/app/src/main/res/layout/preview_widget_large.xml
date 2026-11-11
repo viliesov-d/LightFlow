@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+ android:layout_width="match_parent" android:layout_height="match_parent">
+ <ImageView android:layout_width="match_parent" android:layout_height="match_parent"
+   android:src="@drawable/icon_widget_large" android:scaleType="fitCenter"
+   android:contentDescription="@null"/>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+   android:layout_gravity="center" android:gravity="center"
+   android:orientation="vertical">
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:text="11 листопада" android:textColor="#CEDAE7" android:textSize="10sp"/>
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:text="1.1" android:textColor="#F8FAFF"
+    android:textSize="30sp" android:textStyle="bold"/>
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:text="Є світло" android:textColor="#6CE7BA" android:textSize="11sp"/>
+ </LinearLayout>
+</FrameLayout>
