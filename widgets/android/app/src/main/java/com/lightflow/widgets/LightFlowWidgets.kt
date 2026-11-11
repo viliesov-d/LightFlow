@@ -244,21 +244,102 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
             null
         }
         Renderer.render(applicationContext, schedule)
+        scheduleNextBoundary(applicationContext, schedule)
         return Result.success()
     }
 
     companion object {
         private fun workManager(context: Context) = WorkManager.getInstance(context.applicationContext)
 
+        /** Android requires >=15 min periodic work; the change-boundary job is an extra check. */
         fun schedule(context: Context) {
             val periodic = PeriodicWorkRequestBuilder<RefreshWorker>(15, TimeUnit.MINUTES).build()
             workManager(context).enqueueUniquePeriodicWork(
-                "LightFlowWidgetRefresh", ExistingPeriodicWorkPolicy.KEEP, periodic
+                PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, periodic
             )
             refresh(context)
         }
-        fun refresh(context: Context) {
-            workManager(context).enqueue(OneTimeWorkRequestBuilder<RefreshWorker>().build())
+
+        fun refresh(context: Context, userInitiated: Boolean = false) {
+            val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+            // Before Android 12, expedited WorkManager jobs require a foreground service
+            // and notification. The standard one-time request is safe for those devices.
+            if (userInitiated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                request.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            }
+            val uniqueName = if (userInitiated) MANUAL_WORK else "LightFlowInitialRefresh"
+            workManager(context).enqueueUniqueWork(
+                uniqueName, ExistingWorkPolicy.KEEP, request.build()
+            )
+        }
+
+        /** Best-effort extra online check near the next published state change. */
+        private fun scheduleNextBoundary(context: Context, schedule: Schedule?) {
+            val manager = workManager(context)
+            if (schedule == null) {
+                manager.cancelUniqueWork(BOUNDARY_WORK)
+                return
+            }
+            val clock = ZonedDateTime.now(KYIV)
+            val currentMinutes = clock.hour * 60 + clock.minute
+            val next = schedule.periods.mapNotNull { minutes(it.end) }
+                .firstOrNull { it > currentMinutes && it < 1440 }
+            if (next == null) {
+                manager.cancelUniqueWork(BOUNDARY_WORK)
+                return
+            }
+            val target = LocalDate.now(KYIV)
+                .atTime(next / 60, next % 60)
+                .atZone(KYIV).toInstant().plusSeconds(5)
+            val delay = Duration.between(Instant.now(), target).toMillis().coerceAtLeast(1000L)
+            val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+                .setInitialDelay(delay, TimeUnit.MILLISECONDS).build()
+            manager.enqueueUniqueWork(BOUNDARY_WORK, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        fun stopIfNoWidgets(context: Context) {
+            val manager = AppWidgetManager.getInstance(context)
+            val small = manager.getAppWidgetIds(ComponentName(context, SmallWidgetProvider::class.java))
+            val large = manager.getAppWidgetIds(ComponentName(context, LargeWidgetProvider::class.java))
+            if (small.isEmpty() && large.isEmpty()) {
+                workManager(context).cancelUniqueWork(PERIODIC_WORK)
+                workManager(context).cancelUniqueWork(BOUNDARY_WORK)
+            }
+        }
+    }
+}
+
+/**
+ * A home-screen RemoteViews click carries widget ID but not the exact touch coordinates.
+ * Four GPU-friendly vector frames approximate a wave spreading from the widget centre.
+ * The update starts only after the label has appeared. No Activity/browser is launched.
+ */
+class RefreshTapReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != ACTION_REFRESH) return
+        val id = intent.getIntExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID
+        )
+        if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return
+
+        val app = context.applicationContext
+        val pending = goAsync()
+        val handler = Handler(Looper.getMainLooper())
+        try {
+            Renderer.loadingFrame(app, id, 0)
+            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 1) } }, 160L)
+            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 2) } }, 360L)
+            handler.postDelayed({ runCatching { Renderer.loadingFrame(app, id, 3) } }, 600L)
+            handler.postDelayed({
+                try {
+                    RefreshWorker.refresh(app, userInitiated = true)
+                } finally {
+                    pending.finish()
+                }
+            }, 790L)
+        } catch (_: Exception) {
+            pending.finish()
+            RefreshWorker.refresh(app, userInitiated = true)
         }
     }
 }
@@ -266,15 +347,19 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
 class SmallWidgetProvider : AppWidgetProvider() {
     override fun onEnabled(context: Context) { RefreshWorker.schedule(context) }
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        Renderer.render(context, null)
         RefreshWorker.schedule(context)
     }
+    override fun onDisabled(context: Context) { RefreshWorker.stopIfNoWidgets(context) }
 }
 
 class LargeWidgetProvider : AppWidgetProvider() {
     override fun onEnabled(context: Context) { RefreshWorker.schedule(context) }
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        Renderer.render(context, null)
         RefreshWorker.schedule(context)
     }
+    override fun onDisabled(context: Context) { RefreshWorker.stopIfNoWidgets(context) }
 }
 
 class OpenSiteActivity : Activity() {
