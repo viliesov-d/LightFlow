@@ -34,11 +34,11 @@ test('only the app can receive widget tap broadcasts',()=>{
   assert.match(kotlin,/onReceive\(context: Context, intent: Intent\)/);
 });
 test('ripple frames use Android supported vectors, and labels appear after tap',()=>{
-  assert.match(kotlin,/loadingFrame\(app, id, 0\)/);
+  assert.match(kotlin,/loadingFrame\(context, widgetId, 0\)/);
   assert.match(kotlin,/for \(step in 1\.\.7\)/);
-  assert.match(kotlin,/loadingFrame\(app, id, step\)/);
+  assert.match(kotlin,/loadingFrame\(context, widgetId, step\)/);
   assert.match(kotlin,/step \* 105L/);
-  assert.match(kotlin,/RefreshWorker\.refresh\(app, userInitiated = true\)/);
+  assert.match(kotlin,/RefreshWorker\.refresh\(context, userInitiated = true\)/);
   assert.match(kotlin,/setImageViewResource\(config\.ripple, frame\)/);
   for(let i=1;i<=8;i++) {
     const xml=readFileSync(android+'res/drawable/ripple_stage_'+i+'.xml','utf8');
