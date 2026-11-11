@@ -177,60 +177,65 @@ internal object WidgetArt {
     private fun dial(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
         val side=min(w,h)
         val cx=w*.5f;val cy=h*.505f
-        val radius=side*.346f;val thickness=side*.104f
+        val radius=side*.344f;val thickness=side*.101f
+        val outer=radius+thickness*.5f
+        val inner=radius-thickness*.5f
         val bounds=RectF(cx-radius,cy-radius,cx+radius,cy+radius)
         c.drawCircle(cx,cy,radius,paint(edge,thickness,Paint.Style.STROKE))
-        if(data!=null)for(period in data.periods) {
-            val a=minutes(period.start) ?: continue
-            val b=minutes(period.end) ?: continue
-            val color=if(period.off)Color.rgb(204,87,100) else Color.rgb(42,161,126)
-            c.drawArc(bounds,-90f+a/4f,(b-a)/4f,false,
-                paint(color,thickness,Paint.Style.STROKE).apply {
+
+        // Time intervals are preserved to the minute; the separators are just visual.
+        if(data!=null)for(segment in data.periods) {
+            val start=minutes(segment.start) ?: continue
+            val end=minutes(segment.end) ?: continue
+            val light=if(segment.off)Color.rgb(249,130,143) else Color.rgb(112,230,183)
+            val shade=if(segment.off)Color.rgb(220,95,112) else Color.rgb(57,190,150)
+            c.drawArc(bounds,-90f+start/4f,(end-start)/4f,false,
+                paint(light,thickness,Paint.Style.STROKE).apply {
                     strokeCap=Paint.Cap.BUTT
+                    shader=LinearGradient(cx-radius,cy-radius,cx+radius,cy+radius,
+                        light,shade,Shader.TileMode.CLAMP)
                 })
         }
+        c.drawCircle(cx,cy,outer,
+            paint(Color.argb(95,187,208,218),side*.0022f,Paint.Style.STROKE))
+        c.drawCircle(cx,cy,inner,
+            paint(Color.argb(130,187,208,218),side*.0019f,Paint.Style.STROKE))
         for(hour in 0..23) {
             val angle=Math.toRadians((-90+hour*15).toDouble())
-            c.drawLine(polarX(cx,radius-thickness*.54f,angle),
-                polarY(cy,radius-thickness*.54f,angle),
-                polarX(cx,radius+thickness*.54f,angle),
-                polarY(cy,radius+thickness*.54f,angle),
-                paint(bg,side*.0026f))
-            write(c,hour.toString(),polarX(cx,radius+thickness*.74f,angle),
-                polarY(cy,radius+thickness*.74f,angle)+side*.012f,
+            c.drawLine(polarX(cx,inner-1f,angle),
+                polarY(cy,inner-1f,angle),
+                polarX(cx,outer+1f,angle),
+                polarY(cy,outer+1f,angle),
+                paint(bg,side*.0025f))
+            write(c,hour.toString(),polarX(cx,outer+side*.038f,angle),
+                polarY(cy,outer+side*.038f,angle)+side*.011f,
                 side*.035f,text,medium)
         }
-        val current=nowPeriod(data,now)
-        val accent=when(current?.off){true->red;false->green;null->gray}
+
+        // Short white hand + white circle at the ring, no arrowhead crossing centre.
         val elapsed=now.hour*3600+now.minute*60+now.second
         val angle=Math.toRadians(-90+elapsed/86400.0*360.0)
-        val arrowRadius=radius+thickness*.52f
-        val px=polarX(cx,arrowRadius,angle);val py=polarY(cy,arrowRadius,angle)
-        c.drawLine(polarX(cx,radius-thickness*.82f,angle),
-            polarY(cy,radius-thickness*.82f,angle),px,py,
-            paint(text,side*.0044f))
-        val ux=cos(angle).toFloat(); val uy=sin(angle).toFloat()
-        val tip=Path().apply {
-            moveTo(px+ux*side*.021f,py+uy*side*.021f)
-            lineTo(px-ux*side*.020f-uy*side*.012f,
-                   py-uy*side*.020f+ux*side*.012f)
-            lineTo(px-ux*side*.020f+uy*side*.012f,
-                   py-uy*side*.020f-ux*side*.012f)
-            close()
-        }
-        c.drawPath(tip,paint(text))
-        // The pointer stays on the ring instead of cutting across the central text.
-        write(c,now.format(DateTimeFormatter.ofPattern("d MMMM",Locale("uk"))),
-            cx,cy-side*.15f,side*.047f,muted,medium)
-        write(c,"1.1",cx,cy-side*.012f,side*.130f,text,bold)
-        write(c,"ПІДЧЕРГА",cx,cy+side*.040f,side*.031f,muted,medium)
-        c.drawLine(cx-side*.135f,cy+side*.080f,
-            cx+side*.135f,cy+side*.080f,paint(edge,side*.0025f))
-        write(c,when(current?.off){
+        val markRadius=radius+thickness*.31f
+        val px=polarX(cx,markRadius,angle);val py=polarY(cy,markRadius,angle)
+        c.drawLine(polarX(cx,inner-side*.018f,angle),
+            polarY(cy,inner-side*.018f,angle),px,py,paint(text,side*.0042f))
+        c.drawCircle(px,py,side*.011f,paint(text))
+
+        val current=nowPeriod(data,now)
+        val accent=when(current?.off){true->red;false->green;null->gray}
+        val status=when(current?.off){
             true->"Відключення"
             false->"Світло за графіком"
-            null->"Немає даних"
-        },cx,cy+side*.15f,side*.045f,accent,medium)
+            null->"Статус невідомий"
+        }
+        write(c,now.format(DateTimeFormatter.ofPattern("d MMMM",Locale("uk"))),
+            cx,cy-side*.152f,side*.047f,muted,medium)
+        write(c,"1.1",cx,cy-side*.017f,side*.128f,text,bold)
+        write(c,"ПІДЧЕРГА",cx,cy+side*.038f,side*.030f,muted,medium)
+        c.drawLine(cx-side*.139f,cy+side*.081f,
+            cx+side*.139f,cy+side*.081f,
+            paint(Color.rgb(93,116,133),side*.0018f))
+        write(c,status,cx,cy+side*.143f,side*.043f,accent,medium)
     }
 
     fun draw(kind:Kind,schedule:Schedule?,now:ZonedDateTime):Bitmap {
