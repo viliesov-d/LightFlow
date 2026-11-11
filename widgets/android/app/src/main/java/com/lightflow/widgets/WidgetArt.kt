@@ -8,7 +8,7 @@ import kotlin.math.*
 
 /** The only RemoteViews child is an ImageView: all detail is safely drawn off-screen. */
 internal object WidgetArt {
-    enum class Kind { BULB, CAROUSEL, DIAL }
+    enum class Kind { BULB, COMPACT_DIAL, DIAL }
     private val bg=Color.rgb(15,27,42)
     private val bgHighlight=Color.rgb(26,45,64)
     private val edge=Color.rgb(78,101,123)
@@ -95,89 +95,11 @@ internal object WidgetArt {
         val interval=if(state==null) "--:--–--:--" else state.start+"–"+state.end
         write(c,interval,x,h*.855f,side*.084f,text,medium)
     }
-    private fun strip(c: Canvas,w: Float,h: Float,data: Schedule?,now: ZonedDateTime) {
-        val current=nowPeriod(data,now)
-        val periods=data?.periods.orEmpty()
-        val index=periods.indexOf(current)
-        val accent=when(current?.off) {true->red;false->green;null->gray}
-        val status=when(current?.off) {
-            true->"Відключення"
-            false->"Є світло"
-            null->"Немає актуальних даних"
-        }
-        // The chosen reference: quiet left-aligned title above slim, glowing pills.
-        c.drawCircle(w*.067f,h*.226f,h*.024f,paint(accent))
-        c.drawText(status,w*.099f,h*.287f,paint(text).apply {
-            textSize=h*.157f
-            typeface=medium
-            setShadowLayer(h*.022f,0f,h*.010f,Color.argb(200,6,15,25))
-        })
-        val center=w*.5f
-        val segmentWidth=w*.66f   // 66% of visible carousel width.
-        val gap=w*.016f
-        val top=h*.391f
-        val bottom=h*.707f
-        val radius=(bottom-top)*.47f
-        c.save()
-        c.clipRect(w*.023f,top-4f,w*.977f,bottom+4f)
-        if(index<0) {
-            c.drawRoundRect(center-segmentWidth*.5f,top,
-                center+segmentWidth*.5f,bottom,radius,radius,paint(edge))
-            write(c,"--:--–--:--",center,h*.594f,h*.17f,text,medium)
-        } else {
-            val start=minutes(current!!.start) ?: 0
-            val end=minutes(current.end) ?: 1440
-            val time=now.hour*60f+now.minute+now.second/60f
-            val progress=((time-start)/(end-start).coerceAtLeast(1)).coerceIn(0f,1f)
-            // Fixed central pointer, while cards glide slowly according to phone time.
-            // This keeps the current 66%-width block mostly in view, unlike the old clipping.
-            val activeLeft=(w-segmentWidth)*.5f+(.5f-progress)*w*.25f
-            for(i in periods.indices) {
-                if(i<index-2||i>index+2)continue
-                val segment=periods[i]
-                val x=activeLeft+(i-index)*(segmentWidth+gap)
-                if(x>w||x+segmentWidth<0f)continue
-                val active=i==index
-                val accentColor=if(segment.off)red else green
-                val leftFill=if(segment.off)Color.rgb(231,119,132) else Color.rgb(122,237,190)
-                val rightFill=if(segment.off)Color.rgb(175,75,92) else Color.rgb(55,191,147)
-                val rect=RectF(x,top,x+segmentWidth,bottom)
-                if(active) {
-                    c.drawRoundRect(rect,radius,radius,
-                        paint(accentColor,2.4f,Paint.Style.STROKE).apply {
-                            setShadowLayer(h*.062f,0f,0f,accentColor)
-                        })
-                }
-                c.drawRoundRect(rect,radius,radius,paint(leftFill).apply {
-                    shader=LinearGradient(x,top,x+segmentWidth,bottom,
-                        leftFill,rightFill,Shader.TileMode.CLAMP)
-                    alpha=if(active)255 else 185
-                })
-                c.drawRoundRect(RectF(x+1.4f,top+1.4f,x+segmentWidth-1.4f,bottom-1.4f),
-                    radius,radius,paint(if(active)Color.argb(195,250,255,253)
-                        else Color.argb(103,243,239,243),
-                        if(active)2.3f else 1.1f,Paint.Style.STROKE))
-                // Only exact hours inside each capsule, no second status line.
-                val timeColor=if(segment.off)text else Color.rgb(18,57,47)
-                write(c,segment.start+"–"+segment.end,
-                    x+segmentWidth*.5f,top+(bottom-top)*.67f,
-                    h*.18f,timeColor,if(active)bold else medium)
-            }
-        }
-        c.restore()
-        // The arrow is separate from the moving timeline, always in the same place.
-        val arrow=Path().apply {
-            moveTo(center,h*.757f)
-            lineTo(center-h*.044f,h*.812f)
-            lineTo(center+h*.044f,h*.812f)
-            close()
-        }
-        c.drawPath(arrow,paint(accent))
-    }
-    private fun dial(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
+    private fun dial(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime,compact:Boolean=false) {
         val side=min(w,h)
         val cx=w*.5f;val cy=h*.505f
-        val radius=side*.344f;val thickness=side*.101f
+        val radius=side*(if(compact) .330f else .344f)
+        val thickness=side*(if(compact) .106f else .101f)
         val outer=radius+thickness*.5f
         val inner=radius-thickness*.5f
         val bounds=RectF(cx-radius,cy-radius,cx+radius,cy+radius)
@@ -207,9 +129,13 @@ internal object WidgetArt {
                 polarX(cx,outer+1f,angle),
                 polarY(cy,outer+1f,angle),
                 paint(bg,side*.0025f))
-            write(c,hour.toString(),polarX(cx,outer+side*.038f,angle),
-                polarY(cy,outer+side*.038f,angle)+side*.011f,
-                side*.035f,text,medium)
+            // In the 2×2 version, show eight well-spaced labels; 24 colored hours remain.
+            if(!compact || hour % 3 == 0) {
+                val labelSize=side*(if(compact) .045f else .035f)
+                write(c,hour.toString(),polarX(cx,outer+side*.038f,angle),
+                    polarY(cy,outer+side*.038f,angle)+side*.011f,
+                    labelSize,text,medium)
+            }
         }
 
         // Short white hand + white circle at the ring, no arrowhead crossing centre.
@@ -228,21 +154,37 @@ internal object WidgetArt {
             false->"Світло за графіком"
             null->"Статус невідомий"
         }
-        write(c,now.format(DateTimeFormatter.ofPattern("d MMMM",Locale("uk"))),
-            cx,cy-side*.152f,side*.047f,muted,medium)
-        write(c,"1.1",cx,cy-side*.017f,side*.128f,text,bold)
-        write(c,"ПІДЧЕРГА",cx,cy+side*.038f,side*.030f,muted,medium)
-        c.drawLine(cx-side*.139f,cy+side*.081f,
-            cx+side*.139f,cy+side*.081f,
-            paint(Color.rgb(93,116,133),side*.0018f))
-        write(c,status,cx,cy+side*.143f,side*.043f,accent,medium)
+        if(compact) {
+            // The big ring's layout, carefully scaled for a real 2×2 home-screen widget.
+            // Keep the date, subqueue and state; abbreviate secondary labels for clarity.
+            write(c,now.format(DateTimeFormatter.ofPattern("d MMM",Locale("uk"))),
+                cx,cy-side*.138f,side*.043f,muted,medium)
+            write(c,"1.1",cx,cy+side*.014f,side*.145f,text,bold)
+            val shortStatus=when(current?.off){
+                true->"Відключення"
+                false->"Є світло"
+                null->"Невідомо"
+            }
+            val statusSize=side*(if(shortStatus.length>9) .037f else .043f)
+            write(c,shortStatus,cx,cy+side*.106f,statusSize,accent,medium)
+            write(c,"за графіком",cx,cy+side*.152f,side*.030f,muted,medium)
+        } else {
+            write(c,now.format(DateTimeFormatter.ofPattern("d MMMM",Locale("uk"))),
+                cx,cy-side*.152f,side*.047f,muted,medium)
+            write(c,"1.1",cx,cy-side*.017f,side*.128f,text,bold)
+            write(c,"ПІДЧЕРГА",cx,cy+side*.038f,side*.030f,muted,medium)
+            c.drawLine(cx-side*.139f,cy+side*.081f,
+                cx+side*.139f,cy+side*.081f,
+                paint(Color.rgb(93,116,133),side*.0018f))
+            write(c,status,cx,cy+side*.143f,side*.043f,accent,medium)
+        }
     }
 
     fun draw(kind:Kind,schedule:Schedule?,now:ZonedDateTime):Bitmap {
         // Bounded ARGB_8888 images stay well below the widget binder bitmap quota.
         val size=when(kind){
             Kind.BULB->340 to 340
-            Kind.CAROUSEL->840 to 260
+            Kind.COMPACT_DIAL->430 to 430
             Kind.DIAL->630 to 630
         }
         val cBitmap=Bitmap.createBitmap(size.first,size.second,Bitmap.Config.ARGB_8888)
@@ -251,7 +193,7 @@ internal object WidgetArt {
         // Do not paint any rectangular panel, including behind the 24-hour circle.
         when(kind){
             Kind.BULB->bulb(canvas,size.first.toFloat(),size.second.toFloat(),schedule,now)
-            Kind.CAROUSEL->strip(canvas,size.first.toFloat(),size.second.toFloat(),schedule,now)
+            Kind.COMPACT_DIAL->dial(canvas,size.first.toFloat(),size.second.toFloat(),schedule,now,compact=true)
             Kind.DIAL->dial(canvas,size.first.toFloat(),size.second.toFloat(),schedule,now)
         }
         return cBitmap
