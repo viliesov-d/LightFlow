@@ -10,7 +10,7 @@ const ALLOWED=new Set([
   'ProgressBar','TextClock','TextView'
 ]);
 const ROOT='widgets/android/app/src/main/res/';
-const sizes=['small','medium','large'];
+const sizes=['small','compact','large'];
 
 for(const name of sizes) {
   test(name+' widget has safe, minimal Android RemoteViews layout',()=>{
@@ -34,9 +34,10 @@ for(const name of sizes) {
 
 test('the 3 named providers are registered and use different supported layouts',()=>{
   const manifest=readFileSync('widgets/android/app/src/main/AndroidManifest.xml','utf8');
-  for(const type of ['Small','Medium','Large']) {
+  for(const type of ['Small','CompactDial','Large']) {
     assert.ok(manifest.includes('android:name=".'+type+'WidgetProvider"'));
   }
+  assert.doesNotMatch(manifest,/MediumWidgetProvider/);
   assert.match(manifest,/android:name="\.WidgetClockReceiver"/);
   assert.match(manifest,/android:name="\.RefreshTapReceiver"/);
 });
