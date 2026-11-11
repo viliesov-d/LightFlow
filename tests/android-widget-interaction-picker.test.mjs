@@ -26,6 +26,9 @@ test('two taps on same widget cancel all animation and work before opening site'
   assert.match(source,/cancel\(prev\)/);
   assert.match(source,/session\.callbacks\.forEach\(main::removeCallbacks\)/);
   assert.match(source,/Renderer\.cancelLoading\(context, widgetId\)/);
+  assert.match(source,/setOnClickPendingIntent\(config\.loading, refreshIntent\(context, widgetId\)\)/);
+  assert.match(source,/setOnClickPendingIntent\(config\.ripple, refreshIntent\(context, widgetId\)\)/);
+  assert.match(source,/setOnClickPendingIntent\(config\.label, refreshIntent\(context, widgetId\)\)/);
   assert.match(source,/setViewVisibility\(config\.artwork, View\.VISIBLE\)/);
   assert.match(source,/setViewVisibility\(config\.loading, View\.GONE\)/);
   assert.match(source,/Intent\(Intent\.ACTION_VIEW, Uri\.parse\(SITE\)\)/);
