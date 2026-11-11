@@ -29,13 +29,27 @@ const HTML = String.raw`<!doctype html>
     #details {font-size:13px;color:#cbd5e5;line-height:1.45;margin-top:7px}
     .section-title {margin:25px 0 14px;font-size:19px;line-height:1.35;letter-spacing:-.025em;font-weight:700}
     .small-title {font-size:14px;font-weight:600;color:#c9d5e7;margin:0 0 12px}
-    .periods {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-    .period {display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;min-height:79px;gap:5px;padding:10px 5px;border-radius:13px;text-align:center; border:1px solid transparent}
-    .period.off { background:linear-gradient(135deg,#ff7e84,#ea666c); color:#231820; }
-    .period.on { background:linear-gradient(135deg,#50e7ad,#27c88d); color:#10261d; }
-    .period.current { box-shadow:inset 0 0 0 2px #172236,0 0 0 2px #f5f9ff; }
-    .period-time {font-weight:820;font-size:clamp(10px,3vw,15px);white-space:nowrap;letter-spacing:-.04em;font-variant-numeric:tabular-nums;}
-    .period-label {font-size:clamp(10px,2.8vw,13px);font-weight:600;line-height:1.25}
+    .dial-shell { display:flex; justify-content:center; align-items:center; margin:5px auto 12px; }
+    .dial-stage { width:min(100%,470px); aspect-ratio:1; position:relative; }
+    .dial-svg { width:100%; height:100%; overflow:visible; display:block; }
+    .ring-track { fill:none; stroke:#344557; stroke-width:45; }
+    .dial-segment { fill:none; stroke-width:45; stroke-linecap:butt; }
+    .dial-divider { stroke:#152538; stroke-width:2; }
+    .dial-hour { fill:#f8faff; font:500 13px system-ui,-apple-system,"Segoe UI",sans-serif; text-anchor:middle; dominant-baseline:central; }
+    .dial-center-date { fill:#bed1e2; font:500 21px system-ui,-apple-system,"Segoe UI",sans-serif; text-anchor:middle; }
+    .dial-center-queue { fill:#f9fbff; font:700 67px system-ui,-apple-system,"Segoe UI",sans-serif; letter-spacing:-3px; text-anchor:middle; }
+    .dial-center-caption { fill:#b9cbe0; font:500 14px system-ui,-apple-system,"Segoe UI",sans-serif; text-anchor:middle; letter-spacing:.7px; }
+    .dial-center-status { fill:#b4c5d8; font:600 19px system-ui,-apple-system,"Segoe UI",sans-serif; text-anchor:middle; }
+    .dial-center-status.on { fill:#6ce7ba; }
+    .dial-center-status.off { fill:#ff8997; }
+    .dial-inner-separator { stroke:#5e7487; stroke-width:1; opacity:.55; }
+    .dial-pointer { stroke:#fff; stroke-width:3; stroke-linecap:round; }
+    .dial-pointer-dot { fill:#fff; }
+    .dial-stage::before { content:""; position:absolute; inset:7%; border-radius:50%; box-shadow:0 0 33px #0e1d2e55; pointer-events:none; }
+    @media(max-width:430px) {
+      .dial-stage { width:100%; }
+      .dial-shell { margin-inline:-11px; }
+    }
     .legend {display:flex;align-items:center;flex-wrap:wrap;gap:9px 20px;margin:16px 1px 0;color:#c2d0e0;font-size:12px;}
     .legend-item {display:inline-flex;gap:7px;align-items:center}
     .swatch {display:inline-block;width:12px;height:12px;border-radius:4px;flex:none}
@@ -58,8 +72,7 @@ const HTML = String.raw`<!doctype html>
     .disclaimer {margin:0 6px;color:#a6b4c8;font-size:12px;line-height:1.65}
     .error {color:#d4deec;font-size:13px;line-height:1.7;padding:14px;background:#25344b;border-radius:12px}
     @media(max-width:370px) {
-      body {padding-inline:11px}.panel {padding:14px}.periods {gap:5px}.period {min-height:74px;padding:9px 2px}
-      .period-time {font-size:10px}.period-label {font-size:10px}.outage-time {font-size:16px}
+      body {padding-inline:11px}.panel {padding:14px}.outage-time {font-size:16px}
     }
     @media(prefers-reduced-motion:no-preference){button{transition:background .2s}button:hover{background:#3b5471}}
   </style>
@@ -88,7 +101,36 @@ const HTML = String.raw`<!doctype html>
     <p id="day" class="small-title"></p>
 
     <div id="available" hidden>
-      <div class="periods" id="periods" aria-label="Послідовність групованих інтервалів на всю добу"></div>
+      <div class="dial-shell">
+        <div class="dial-stage">
+          <svg class="dial-svg" id="dial" viewBox="0 0 480 480" role="img"
+               aria-label="Круговий графік на 24 години. М'ятний — світло за графіком, кораловий — відключення; стрілка показує поточний час Києва.">
+            <defs>
+              <linearGradient id="dial-on" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#86f4cb"/>
+                <stop offset="1" stop-color="#3acb99"/>
+              </linearGradient>
+              <linearGradient id="dial-off" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#ff919d"/>
+                <stop offset="1" stop-color="#df677b"/>
+              </linearGradient>
+            </defs>
+            <circle class="ring-track" cx="240" cy="240" r="163"/>
+            <g id="dial-segments"></g>
+            <g id="dial-dividers"></g>
+            <g id="dial-hours"></g>
+            <text id="dial-date" class="dial-center-date" x="240" y="206">—</text>
+            <text id="dial-queue" class="dial-center-queue" x="240" y="263">1.1</text>
+            <text class="dial-center-caption" x="240" y="286">ПІДЧЕРГА</text>
+            <line class="dial-inner-separator" x1="175" x2="305" y1="302" y2="302"/>
+            <text id="dial-current" class="dial-center-status" x="240" y="329">Статус невідомий</text>
+            <g id="dial-hand">
+              <line id="dial-hand-line" class="dial-pointer" x1="240" y1="120" x2="240" y2="68"/>
+              <circle id="dial-hand-dot" class="dial-pointer-dot" cx="240" cy="68" r="5.5"/>
+            </g>
+          </svg>
+        </div>
+      </div>
       <div class="legend">
         <span class="legend-item"><i class="swatch off"></i>Відключення</span>
         <span class="legend-item"><i class="swatch on"></i>За графіком зі світлом</span>
@@ -129,6 +171,7 @@ const HTML = String.raw`<!doctype html>
   const stamp = new Intl.DateTimeFormat('uk-UA',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Kyiv'});
 
   function clearUnknown(message) {
+    activeSchedule=null;
     el('status-card').className='status';
     el('status-icon').textContent='?';
     el('status').textContent='Статус невідомий';
@@ -159,6 +202,82 @@ const HTML = String.raw`<!doctype html>
     if(text!==undefined)node.textContent=text;
     return node;
   }
+  const SVG_NS='http://www.w3.org/2000/svg';
+  const kyivTimeFormat=new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+  });
+  let activeSchedule=null;
+  function kyivSeconds() {
+    const parts=Object.fromEntries(kyivTimeFormat.formatToParts(new Date())
+      .filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));
+    return parts.hour*3600+parts.minute*60+parts.second;
+  }
+  function positionAt(mins,radius) {
+    const a=(mins/1440*2*Math.PI)-Math.PI/2;
+    return {x:240+Math.cos(a)*radius,y:240+Math.sin(a)*radius};
+  }
+  function svgElement(tag,attrs,text) {
+    const node=document.createElementNS(SVG_NS,tag);
+    for(const [key,value] of Object.entries(attrs||{}))node.setAttribute(key,String(value));
+    if(text!==undefined)node.textContent=text;
+    return node;
+  }
+  function intervalArc(start,end) {
+    // A full-day period needs two arcs because SVG start and end coincide at 24h.
+    const r=163,steps=Math.ceil((end-start)/720);
+    const p0=positionAt(start,r);
+    let d='M '+p0.x+' '+p0.y;
+    for(let i=1;i<=steps;i++){
+      const p=positionAt(start+(end-start)*i/steps,r);
+      d+=' A '+r+' '+r+' 0 0 1 '+p.x+' '+p.y;
+    }
+    return d;
+  }
+  function drawDial(data) {
+    activeSchedule=data;
+    const arcs=el('dial-segments'),dividers=el('dial-dividers'),hours=el('dial-hours');
+    arcs.replaceChildren();dividers.replaceChildren();hours.replaceChildren();
+    data.periods.forEach(span=>{
+      const off=span.state==='scheduled_off';
+      arcs.append(svgElement('path',{
+        d:intervalArc(minute(span.start),minute(span.end)),
+        class:'dial-segment',stroke:'url(#dial-'+(off?'off':'on')+')'
+      }));
+    });
+    for(let h=0;h<24;h++){
+      const p0=positionAt(h*60,139),p1=positionAt(h*60,187),label=positionAt(h*60,211);
+      dividers.append(svgElement('line',{
+        x1:p0.x,y1:p0.y,x2:p1.x,y2:p1.y,class:'dial-divider'
+      }));
+      hours.append(svgElement('text',{
+        x:label.x,y:label.y,class:'dial-hour'
+      },String(h)));
+    }
+    el('dial-date').textContent=new Intl.DateTimeFormat('uk-UA',{
+      day:'numeric',month:'long',timeZone:'Europe/Kyiv'
+    }).format(new Date(data.date+'T12:00:00Z'));
+    el('dial-queue').textContent=data.queue;
+    updateDialClock();
+  }
+  function updateDialClock() {
+    if(!activeSchedule || document.hidden)return;
+    const seconds=kyivSeconds();
+    const minuteNow=seconds/60;
+    const interval=activeSchedule.periods.find(p=>
+      minute(p.start)<=minuteNow && minuteNow<minute(p.end));
+    const isOff=interval?.state==='scheduled_off';
+    const line=el('dial-current');
+    line.textContent=!interval?'Статус невідомий':
+      isOff?'Відключення':'Світло за графіком';
+    line.setAttribute('class','dial-center-status '+(!interval?'':isOff?'off':'on'));
+    // On the web the hand genuinely tracks every second, unlike RemoteViews.
+    const start=positionAt(minuteNow,139),end=positionAt(minuteNow,179);
+    const hand=el('dial-hand-line'),dot=el('dial-hand-dot');
+    hand.setAttribute('x1',start.x);hand.setAttribute('y1',start.y);
+    hand.setAttribute('x2',end.x);hand.setAttribute('y2',end.y);
+    dot.setAttribute('cx',end.x);dot.setAttribute('cy',end.y);
+  }
+
   function show(data) {
     const isOff=data.state==='scheduled_off';
     el('status-card').className='status '+(isOff?'off':'on');
@@ -170,18 +289,7 @@ const HTML = String.raw`<!doctype html>
 
     const day=new Date(data.date+'T12:00:00Z');
     el('day').textContent=dates.format(day)+' · '+data.queue;
-    el('periods').replaceChildren();
-    const kyivTime=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
-    const currentMinute=minute(kyivTime);
-    for(const span of data.periods) {
-      const off=span.state==='scheduled_off';
-      const active=minute(span.start)<=currentMinute && currentMinute<minute(span.end);
-      const card=makeNode('div','period '+(off?'off':'on')+(active?' current':''));
-      card.setAttribute('aria-label',span.start+'–'+span.end+': '+(off?'відключення':'за графіком зі світлом'));
-      card.append(makeNode('strong','period-time',span.start+'–'+span.end));
-      card.append(makeNode('span','period-label',off?'Відключення':'Є світло'));
-      el('periods').append(card);
-    }
+    drawDial(data);
     el('outages').replaceChildren();
     for(const outage of data.outages) {
       const item=makeNode('div','outage');
@@ -221,6 +329,7 @@ const HTML = String.raw`<!doctype html>
       busy=false;el('reload').disabled=false;
     }
   }
+  setInterval(updateDialClock,1000);
   el('reload').addEventListener('click',load);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   setInterval(()=>{if(!document.hidden)load();}, 2*60*1000);

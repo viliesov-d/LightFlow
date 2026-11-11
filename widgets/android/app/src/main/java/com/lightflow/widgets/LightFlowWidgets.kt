@@ -1,6 +1,7 @@
 package com.lightflow.widgets
 
 import android.app.Activity
+import android.app.ActivityOptions
 import android.app.PendingIntent
 import android.app.AlarmManager
 import android.content.BroadcastReceiver
@@ -146,6 +147,17 @@ private object Renderer {
         }
     }
 
+    /** Undo a partial loading frame if a second tap changes the gesture into 'open'. */
+    fun cancelLoading(context: Context, widgetId: Int) {
+        val manager = AppWidgetManager.getInstance(context)
+        val info = manager.getAppWidgetInfo(widgetId) ?: return
+        val config = layouts.firstOrNull { it.provider.name == info.provider.className } ?: return
+        val view = RemoteViews(context.packageName, config.resource)
+        view.setViewVisibility(config.loading, View.GONE)
+        view.setViewVisibility(config.artwork, View.VISIBLE)
+        manager.partiallyUpdateAppWidget(widgetId, view)
+    }
+
     fun loadingFrame(context: Context, widgetId: Int, step: Int) {
         val manager = AppWidgetManager.getInstance(context)
         val info = manager.getAppWidgetInfo(widgetId) ?: return
@@ -165,6 +177,11 @@ private object Renderer {
         // This avoids text/ring collisions and never introduces a square background.
         views.setViewVisibility(config.artwork, View.INVISIBLE)
         views.setViewVisibility(config.loading, View.VISIBLE)
+        // The overlay covers the whole widget: without this click target,
+        // a second tap during the ripple can be swallowed by the launcher.
+        views.setOnClickPendingIntent(config.loading, refreshIntent(context, widgetId))
+        views.setOnClickPendingIntent(config.ripple, refreshIntent(context, widgetId))
+        views.setOnClickPendingIntent(config.label, refreshIntent(context, widgetId))
         views.setImageViewResource(config.ripple, frame)
         views.setTextViewText(config.label, when(step) {
             0 -> " "
@@ -286,31 +303,76 @@ class RefreshWorker(context: Context, params: WorkerParameters): Worker(context,
  * Hold a first tap for a short window. If a second tap on THAT SAME widget arrives,
  * cancel the refresh and open the site instead. Nothing is saved on disk.
  */
-private const val DOUBLE_TAP_WINDOW_MS = 340L
+// Launcher delivery adds latency; 340 ms was too short and caused two single taps.
+private const val DOUBLE_TAP_WINDOW_MS = 700L
+// A slightly later second tap can still cancel an animation before its network request.
+private const val LATE_DOUBLE_TAP_MS = 1250L
 
 private object WidgetTapGestures {
     private val main = Handler(Looper.getMainLooper())
 
-    private data class WaitingTap(
-        val result: BroadcastReceiver.PendingResult,
-        val singleTap: Runnable
-    )
+    private class TapSession(
+        val startedAt: Long,
+        val result: BroadcastReceiver.PendingResult
+    ) {
+        val callbacks = mutableListOf<Runnable>()
+        var refreshing = false
+        var finished = false
+        var active = true
 
-    // AppWidget IDs keep independent click sequences across multiple home widgets.
-    private val waiting = mutableMapOf<Int, WaitingTap>()
+        fun finish() {
+            if (!finished) {
+                finished = true
+                result.finish()
+            }
+        }
+    }
+
+    // One session per widget; the receiver and handler both run on the main thread.
+    private val sessions = mutableMapOf<Int, TapSession>()
+
+    private fun delay(session: TapSession, millis: Long, action: () -> Unit) {
+        val task = Runnable { if (session.active) action() }
+        session.callbacks.add(task)
+        main.postDelayed(task, millis)
+    }
+
+    private fun cancel(session: TapSession) {
+        session.active = false
+        session.callbacks.forEach(main::removeCallbacks)
+        session.callbacks.clear()
+        session.finish()
+    }
 
     fun handle(context: Context, widgetId: Int, result: BroadcastReceiver.PendingResult) {
-        // AppWidgetProvider dispatches on the main thread; the main Handler owns this map.
-        val previous = waiting.remove(widgetId)
-        if (previous != null) {
-            main.removeCallbacks(previous.singleTap)
-            previous.result.finish()
+        val now = SystemClock.elapsedRealtime()
+        val prev = sessions[widgetId]
+        if (prev != null && now - prev.startedAt <= LATE_DOUBLE_TAP_MS) {
+            sessions.remove(widgetId)
+            cancel(prev)
+            if (prev.refreshing) {
+                runCatching { Renderer.cancelLoading(context, widgetId) }
+            }
             try {
+                // A direct startActivity() from a background BroadcastReceiver may be
+                // blocked by modern Android. Use a user-initiated Activity PendingIntent.
                 val browser = Intent(Intent.ACTION_VIEW, Uri.parse(SITE)).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     addCategory(Intent.CATEGORY_BROWSABLE)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                context.startActivity(browser)
+                val launch = PendingIntent.getActivity(
+                    context, 80000 + widgetId, browser,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val options = ActivityOptions.makeBasic().apply {
+                        pendingIntentBackgroundActivityStartMode =
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    }
+                    launch.send(context, 0, null, null, null, null, options.toBundle())
+                } else {
+                    launch.send()
+                }
             } catch (_: Exception) {
                 android.widget.Toast.makeText(
                     context, "Не вдалося відкрити сайт", android.widget.Toast.LENGTH_SHORT
@@ -321,40 +383,44 @@ private object WidgetTapGestures {
             return
         }
 
-        val single = Runnable {
-            waiting.remove(widgetId)
-            startSingleTapRefresh(context, widgetId, result)
+        if (prev != null) {
+            sessions.remove(widgetId)
+            cancel(prev)
         }
-        waiting[widgetId] = WaitingTap(result, single)
-        main.postDelayed(single, DOUBLE_TAP_WINDOW_MS)
-    }
+        val session = TapSession(now, result)
+        sessions[widgetId] = session
 
-    private fun startSingleTapRefresh(
-        context: Context,
-        widgetId: Int,
-        result: BroadcastReceiver.PendingResult
-    ) {
-        try {
-            Renderer.loadingFrame(context, widgetId, 0)
-            // Preserve the existing eight-frame transparent refresh animation.
-            for (step in 1..7) {
-                main.postDelayed({
-                    runCatching { Renderer.loadingFrame(context, widgetId, step) }
-                }, step * 105L)
-            }
-            main.postDelayed({
+        // First tap waits for another tap. Unlike the old 340ms window, 700ms
+        // tolerates launchers that deliver RemoteViews click broadcasts late.
+        delay(session, DOUBLE_TAP_WINDOW_MS) {
+            session.refreshing = true
+            try {
+                Renderer.loadingFrame(context, widgetId, 0)
+                for (step in 1..7) {
+                    delay(session, step * 105L) {
+                        runCatching { Renderer.loadingFrame(context, widgetId, step) }
+                    }
+                }
+                // Network request begins only AFTER the late double-tap window.
+                delay(session, 780L) {
+                    try {
+                        RefreshWorker.refresh(context, userInitiated = true)
+                    } finally {
+                        session.finish()
+                    }
+                }
+            } catch (_: Exception) {
                 try {
                     RefreshWorker.refresh(context, userInitiated = true)
                 } finally {
-                    result.finish()
+                    session.finish()
                 }
-            }, 880L)
-        } catch (_: Exception) {
-            try {
-                RefreshWorker.refresh(context, userInitiated = true)
-            } finally {
-                result.finish()
             }
+        }
+        // Expire the gesture after the double-tap grace period. Do not keep
+        // old sessions indefinitely or misinterpret unrelated later touches.
+        delay(session, LATE_DOUBLE_TAP_MS + 1L) {
+            if (sessions[widgetId] === session) sessions.remove(widgetId)
         }
     }
 }

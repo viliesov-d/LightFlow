@@ -6,26 +6,35 @@ const root='widgets/android/app/src/main/';
 const source=readFileSync(root+'java/com/lightflow/widgets/LightFlowWidgets.kt','utf8');
 const manifest=readFileSync(root+'AndroidManifest.xml','utf8');
 
-test('single tap waits for second tap, then refreshes exactly once',()=>{
-  assert.match(source,/private const val DOUBLE_TAP_WINDOW_MS = 340L/);
-  assert.match(source,/private val waiting = mutableMapOf<Int, WaitingTap>\(\)/);
-  assert.match(source,/val previous = waiting\.remove\(widgetId\)/);
-  assert.match(source,/waiting\[widgetId\] = WaitingTap\(result, single\)/);
-  assert.match(source,/main\.postDelayed\(single, DOUBLE_TAP_WINDOW_MS\)/);
-  assert.match(source,/startSingleTapRefresh\(context, widgetId, result\)/);
-  assert.match(source,/RefreshWorker\.refresh\(context, userInitiated = true\)/);
+test('single tap waits longer for slow launchers, then performs one refresh',()=>{
+  assert.match(source,/DOUBLE_TAP_WINDOW_MS = 700L/);
+  assert.match(source,/LATE_DOUBLE_TAP_MS = 1250L/);
+  assert.match(source,/mutableMapOf<Int, TapSession>/);
+  assert.match(source,/val now = SystemClock\.elapsedRealtime\(\)/);
+  assert.match(source,/sessions\[widgetId\] = session/);
+  assert.match(source,/delay\(session, DOUBLE_TAP_WINDOW_MS\)/);
+  assert.match(source,/Renderer\.loadingFrame\(context, widgetId, 0\)/);
   assert.match(source,/for \(step in 1\.\.7\)/);
   assert.match(source,/step \* 105L/);
-  assert.match(source,/result\.finish\(\)/);
+  assert.match(source,/delay\(session, 780L\)/);
+  assert.match(source,/RefreshWorker\.refresh\(context, userInitiated = true\)/);
 });
 
-test('second tap on the SAME widget cancels pending refresh and opens site',()=>{
-  assert.match(source,/waiting\.remove\(widgetId\)/);
-  assert.match(source,/main\.removeCallbacks\(previous\.singleTap\)/);
-  assert.match(source,/previous\.result\.finish\(\)/);
+test('two taps on same widget cancel all animation and work before opening site',()=>{
+  assert.match(source,/now - prev\.startedAt <= LATE_DOUBLE_TAP_MS/);
+  assert.match(source,/sessions\.remove\(widgetId\)/);
+  assert.match(source,/cancel\(prev\)/);
+  assert.match(source,/session\.callbacks\.forEach\(main::removeCallbacks\)/);
+  assert.match(source,/Renderer\.cancelLoading\(context, widgetId\)/);
+  assert.match(source,/setOnClickPendingIntent\(config\.loading, refreshIntent\(context, widgetId\)\)/);
+  assert.match(source,/setOnClickPendingIntent\(config\.ripple, refreshIntent\(context, widgetId\)\)/);
+  assert.match(source,/setOnClickPendingIntent\(config\.label, refreshIntent\(context, widgetId\)\)/);
+  assert.match(source,/setViewVisibility\(config\.artwork, View\.VISIBLE\)/);
+  assert.match(source,/setViewVisibility\(config\.loading, View\.GONE\)/);
   assert.match(source,/Intent\(Intent\.ACTION_VIEW, Uri\.parse\(SITE\)\)/);
-  assert.match(source,/Intent\.FLAG_ACTIVITY_NEW_TASK/);
-  assert.match(source,/context\.startActivity\(browser\)/);
+  assert.match(source,/PendingIntent\.getActivity\(/);
+  assert.match(source,/ActivityOptions\.MODE_BACKGROUND_ACTIVITY_START_ALLOWED/);
+  assert.match(source,/launch\.send\(context, 0, null, null, null, null, options\.toBundle\(\)\)/);
   assert.match(source,/WidgetTapGestures\.handle\(context\.applicationContext, widgetId, goAsync\(\)\)/);
   assert.doesNotMatch(source,/siteIntent\(/);
 });
@@ -71,6 +80,6 @@ test('horizontal widget is absent from all active picker resources',()=>{
 
 test('version updated to distinguish new install from stale launcher records',()=>{
   const gradle=readFileSync('widgets/android/app/build.gradle.kts','utf8');
-  assert.match(gradle,/versionName = "0\.5\.1"/);
-  assert.match(gradle,/versionCode = 9/);
+  assert.match(gradle,/versionName = "0\.5\.2"/);
+  assert.match(gradle,/versionCode = 10/);
 });
