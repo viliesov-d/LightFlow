@@ -15,6 +15,7 @@ for(const size of ['small','medium','large']) {
     assert.match(xml,new RegExp('android:id="@\\+id/'+size+'LoadingText"'));
     assert.match(xml,/android:visibility="gone"/);
     assert.match(xml,/android:background="@drawable\/widget_loading_background"/);
+    assert.match(xml,/android:clipToOutline="true"/);
     assert.doesNotMatch(xml,/android:background="#F0/);
     assert.match(xml,/<FrameLayout/);
     assert.match(xml,/<ImageView/);
@@ -52,7 +53,7 @@ test('loading background has matching rounded corners with no square overlay',()
   const loading=readFileSync(android+'res/drawable/widget_loading_background.xml','utf8');
   const radius=/<corners android:radius="([^"]+)"\/>/;
   assert.equal(loading.match(radius)?.[1],base.match(radius)?.[1]);
-  assert.ok(loading.includes('android:color="#F50E1928"'));
+  assert.ok(loading.includes('android:color="#F50F1B2A"'));
   for(const kind of ['small','medium','large']) {
     const view=readFileSync(android+'res/layout/widget_'+kind+'.xml','utf8');
     assert.match(view,/android:scaleType="fitCenter"/);

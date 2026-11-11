@@ -9,14 +9,16 @@ import kotlin.math.*
 /** The only RemoteViews child is an ImageView: all detail is safely drawn off-screen. */
 internal object WidgetArt {
     enum class Kind { BULB, CAROUSEL, DIAL }
-    private val bg=Color.rgb(14,25,40)
-    private val edge=Color.rgb(45,70,91)
-    private val text=Color.rgb(248,251,255)
-    private val muted=Color.rgb(170,190,209)
-    private val green=Color.rgb(98,229,179)
-    private val red=Color.rgb(255,130,140)
-    private val gray=Color.rgb(144,160,179)
-    private val amber=Color.rgb(249,211,112)
+    private val bg=Color.rgb(15,27,42)
+    private val bgHighlight=Color.rgb(26,45,64)
+    private val edge=Color.rgb(78,101,123)
+    private val text=Color.rgb(248,250,255)
+    private val muted=Color.rgb(173,193,210)
+    private val green=Color.rgb(108,231,186)
+    private val red=Color.rgb(242,118,131)
+    private val gray=Color.rgb(138,156,174)
+    private val amber=Color.rgb(255,186,57)
+    private val gold=Color.rgb(255,211,131)
     private val font=Typeface.create("sans-serif",Typeface.NORMAL)
     private val medium=Typeface.create("sans-serif-medium",Typeface.NORMAL)
     private val bold=Typeface.create("sans-serif",Typeface.BOLD)
@@ -40,99 +42,134 @@ internal object WidgetArt {
             current>=from && current<to
         }
     }
-    private fun base(c:Canvas,w:Float,h:Float) {
-        val r=min(w,h)*.110f
-        c.drawRoundRect(1f,1f,w-1f,h-1f,r,r,paint(bg))
-        c.drawRoundRect(2f,2f,w-2f,h-2f,r,r,paint(edge,1.25f,Paint.Style.STROKE))
-    }
-    private fun bulb(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
-        val state=nowPeriod(data,now)
-        val accent=if(state==null) gray else if(state.off) red else green
-        val side=min(w,h); val x=w*.5f; val y=h*.385f; val r=side*.166f
-        val outline=Path().apply {
-            moveTo(x-r*.73f,y+r*.65f)
-            cubicTo(x-r*1.85f,y-r*.25f,x-r*.94f,y-r*1.88f,x,y-r*1.82f)
-            cubicTo(x+r*.94f,y-r*1.88f,x+r*1.85f,y-r*.25f,x+r*.73f,y+r*.65f)
-            cubicTo(x+r*.42f,y+r*.97f,x+r*.28f,y+r*1.1f,x+r*.28f,y+r*1.24f)
-            lineTo(x-r*.28f,y+r*1.24f)
-            cubicTo(x-r*.28f,y+r*1.1f,x-r*.42f,y+r*.97f,x-r*.73f,y+r*.65f)
-            close()
-        }
-        c.drawPath(outline,paint(accent,side*.012f,Paint.Style.STROKE).apply {
-            setShadowLayer(side*.019f,0f,0f,accent)
+    private fun base(c: Canvas, w: Float, h: Float) {
+        val radius = min(w,h)*.118f
+        val rect = RectF(1.5f,1.5f,w-1.5f,h-1.5f)
+        c.drawRoundRect(rect,radius,radius,paint(bg).apply {
+            shader = LinearGradient(0f,0f,w,h,
+                intArrayOf(bgHighlight,bg,Color.rgb(12,24,38)),
+                floatArrayOf(0f,.53f,1f),Shader.TileMode.CLAMP)
         })
-        val lightning=Path().apply {
-            moveTo(x+r*.1f,y-r*.83f)
-            lineTo(x-r*.34f,y+r*.06f)
-            lineTo(x-r*.05f,y+r*.06f)
-            lineTo(x-r*.16f,y+r*.64f)
-            lineTo(x+r*.40f,y-r*.26f)
-            lineTo(x+r*.07f,y-r*.26f)
+        c.drawRoundRect(rect,radius,radius,paint(edge,1.7f,Paint.Style.STROKE))
+    }
+
+    private fun bulb(c: Canvas,w: Float,h: Float,data: Schedule?,now: ZonedDateTime) {
+        val state=nowPeriod(data,now)
+        val accent=when(state?.off) { true->red;false->gold;null->gray }
+        val boltColor=if(state==null)gray else amber
+        val side=min(w,h); val x=w*.5f; val y=h*.393f; val r=side*.166f
+        // A restrained halo behind a crisp, symmetric glass outline.
+        c.drawCircle(x,y-r*.23f,r*1.8f,paint(Color.TRANSPARENT).apply {
+            shader=RadialGradient(x,y-r*.23f,r*1.8f,
+                intArrayOf(Color.argb(52,Color.red(accent),Color.green(accent),
+                    Color.blue(accent)),Color.TRANSPARENT),
+                null,Shader.TileMode.CLAMP)
+        })
+        val glass=Path().apply {
+            moveTo(x-r*.64f,y+r*.62f)
+            cubicTo(x-r*1.74f,y-r*.35f,x-r*1.06f,y-r*1.77f,x,y-r*1.76f)
+            cubicTo(x+r*1.06f,y-r*1.77f,x+r*1.74f,y-r*.35f,x+r*.64f,y+r*.62f)
+            cubicTo(x+r*.41f,y+r*.88f,x+r*.34f,y+r*1.02f,x+r*.34f,y+r*1.14f)
+            lineTo(x-r*.34f,y+r*1.14f)
+            cubicTo(x-r*.34f,y+r*1.02f,x-r*.41f,y+r*.88f,x-r*.64f,y+r*.62f)
             close()
         }
-        c.drawPath(lightning,paint(amber))
-        for(i in 0..2)c.drawLine(x-r*.32f,y+r*(1.42f+i*.20f),
-                              x+r*.32f,y+r*(1.42f+i*.20f),
-                              paint(accent,side*.011f))
-        // Deliberately nothing else: bulb, and a time interval below it.
-        write(c, if(state==null) "--:--–--:--" else state.start+"–"+state.end,
-              x,h*.85f,side*.080f,text,medium)
+        c.drawPath(glass,paint(accent,side*.0115f,Paint.Style.STROKE).apply {
+            setShadowLayer(side*.022f,0f,0f,accent)
+        })
+        val bolt=Path().apply {
+            moveTo(x+r*.09f,y-r*.84f)
+            lineTo(x-r*.38f,y+r*.12f)
+            lineTo(x-r*.06f,y+r*.12f)
+            lineTo(x-r*.16f,y+r*.70f)
+            lineTo(x+r*.40f,y-r*.29f)
+            lineTo(x+r*.07f,y-r*.29f)
+            close()
+        }
+        c.drawPath(bolt,paint(boltColor))
+        for(i in 0..1) {
+            c.drawLine(x-r*.37f,y+r*(1.33f+i*.20f),
+                x+r*.37f,y+r*(1.33f+i*.20f),
+                paint(accent,side*.012f))
+        }
+        // No header or status caption: exactly one time interval below the bulb.
+        val interval=if(state==null) "--:--–--:--" else state.start+"–"+state.end
+        write(c,interval,x,h*.855f,side*.084f,text,medium)
     }
-    private fun strip(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
+    private fun strip(c: Canvas,w: Float,h: Float,data: Schedule?,now: ZonedDateTime) {
         val current=nowPeriod(data,now)
         val periods=data?.periods.orEmpty()
-        val i=periods.indexOf(current)
-        val center=w*.5f
-        val segmentWidth=w*.66f  // 66% of the visible carousel.
-        val gap=w*.018f
-        // Quiet status above, with a slimmer, time-only carousel below.
-        val accent=when(current?.off){true->red;false->green;null->muted}
-        c.drawCircle(w*.068f,h*.223f,h*.024f,paint(accent))
-        val status=when(current?.off){
+        val index=periods.indexOf(current)
+        val accent=when(current?.off) {true->red;false->green;null->gray}
+        val status=when(current?.off) {
             true->"Відключення"
             false->"Є світло"
-            null->"Немає актуального графіка"
+            null->"Немає актуальних даних"
         }
-        c.drawText(status,w*.093f,h*.273f,paint(text).apply {
-            textSize=h*.145f
+        // The chosen reference: quiet left-aligned title above slim, glowing pills.
+        c.drawCircle(w*.067f,h*.226f,h*.024f,paint(accent))
+        c.drawText(status,w*.099f,h*.287f,paint(text).apply {
+            textSize=h*.157f
             typeface=medium
         })
-        val top=h*.375f
-        val bottom=h*.725f
+        val center=w*.5f
+        val segmentWidth=w*.66f   // 66% of visible carousel width.
+        val gap=w*.016f
+        val top=h*.391f
+        val bottom=h*.707f
+        val radius=(bottom-top)*.47f
         c.save()
-        c.clipRect(w*.025f,top,w*.975f,bottom)
-        if(i<0) {
-            c.drawRoundRect(w*.17f,top,w*.83f,bottom,h*.10f,h*.10f,paint(edge))
-            write(c,"--:--–--:--",center,h*.595f,h*.16f,text,medium)
+        c.clipRect(w*.023f,top-4f,w*.977f,bottom+4f)
+        if(index<0) {
+            c.drawRoundRect(center-segmentWidth*.5f,top,
+                center+segmentWidth*.5f,bottom,radius,radius,paint(edge))
+            write(c,"--:--–--:--",center,h*.594f,h*.17f,text,medium)
         } else {
             val start=minutes(current!!.start) ?: 0
             val end=minutes(current.end) ?: 1440
             val time=now.hour*60f+now.minute+now.second/60f
             val progress=((time-start)/(end-start).coerceAtLeast(1)).coerceIn(0f,1f)
-            val left=center-progress*segmentWidth
-            for(index in periods.indices) {
-                if(index<i-3 || index>i+3)continue
-                val period=periods[index]
-                val x=left+(index-i)*(segmentWidth+gap)
+            // Fixed central pointer, while cards glide slowly according to phone time.
+            // This keeps the current 66%-width block mostly in view, unlike the old clipping.
+            val activeLeft=(w-segmentWidth)*.5f+(.5f-progress)*w*.25f
+            for(i in periods.indices) {
+                if(i<index-2||i>index+2)continue
+                val segment=periods[i]
+                val x=activeLeft+(i-index)*(segmentWidth+gap)
                 if(x>w||x+segmentWidth<0f)continue
-                val fill=if(period.off)Color.rgb(185,77,91) else Color.rgb(37,145,113)
-                val outline=if(period.off)red else green
-                val radius=h*.10f
-                c.drawRoundRect(x,top,x+segmentWidth,bottom,radius,radius,paint(fill))
-                c.drawRoundRect(x+1.5f,top+1.5f,x+segmentWidth-1.5f,bottom-1.5f,
-                    radius,radius,paint(if(index==i)outline else Color.argb(80,246,250,255),
-                        if(index==i)2.8f else 1.2f,Paint.Style.STROKE))
-                // Inside the block: only the exact hours, no second label.
-                write(c,period.start+"–"+period.end,x+segmentWidth*.5f,
-                    top+(bottom-top)*.67f,h*.158f,text,bold)
+                val active=i==index
+                val accentColor=if(segment.off)red else green
+                val leftFill=if(segment.off)Color.rgb(231,119,132) else Color.rgb(122,237,190)
+                val rightFill=if(segment.off)Color.rgb(175,75,92) else Color.rgb(55,191,147)
+                val rect=RectF(x,top,x+segmentWidth,bottom)
+                if(active) {
+                    c.drawRoundRect(rect,radius,radius,
+                        paint(accentColor,2.4f,Paint.Style.STROKE).apply {
+                            setShadowLayer(h*.062f,0f,0f,accentColor)
+                        })
+                }
+                c.drawRoundRect(rect,radius,radius,paint(leftFill).apply {
+                    shader=LinearGradient(x,top,x+segmentWidth,bottom,
+                        leftFill,rightFill,Shader.TileMode.CLAMP)
+                    alpha=if(active)255 else 185
+                })
+                c.drawRoundRect(RectF(x+1.4f,top+1.4f,x+segmentWidth-1.4f,bottom-1.4f),
+                    radius,radius,paint(if(active)Color.argb(195,250,255,253)
+                        else Color.argb(103,243,239,243),
+                        if(active)2.3f else 1.1f,Paint.Style.STROKE))
+                // Only exact hours inside each capsule, no second status line.
+                val timeColor=if(segment.off)text else Color.rgb(18,57,47)
+                write(c,segment.start+"–"+segment.end,
+                    x+segmentWidth*.5f,top+(bottom-top)*.67f,
+                    h*.18f,timeColor,if(active)bold else medium)
             }
         }
         c.restore()
-        // Fixed subtle marker below the carousel. Time segments move under it.
+        // The arrow is separate from the moving timeline, always in the same place.
         val arrow=Path().apply {
-            moveTo(center,h*.783f)
-            lineTo(center-h*.034f,h*.831f)
-            lineTo(center+h*.034f,h*.831f)
+            moveTo(center,h*.757f)
+            lineTo(center-h*.044f,h*.812f)
+            lineTo(center+h*.044f,h*.812f)
             close()
         }
         c.drawPath(arrow,paint(accent))
@@ -140,60 +177,65 @@ internal object WidgetArt {
     private fun dial(c:Canvas,w:Float,h:Float,data:Schedule?,now:ZonedDateTime) {
         val side=min(w,h)
         val cx=w*.5f;val cy=h*.505f
-        val radius=side*.346f;val thickness=side*.104f
+        val radius=side*.344f;val thickness=side*.101f
+        val outer=radius+thickness*.5f
+        val inner=radius-thickness*.5f
         val bounds=RectF(cx-radius,cy-radius,cx+radius,cy+radius)
         c.drawCircle(cx,cy,radius,paint(edge,thickness,Paint.Style.STROKE))
-        if(data!=null)for(period in data.periods) {
-            val a=minutes(period.start) ?: continue
-            val b=minutes(period.end) ?: continue
-            val color=if(period.off)Color.rgb(204,87,100) else Color.rgb(42,161,126)
-            c.drawArc(bounds,-90f+a/4f,(b-a)/4f,false,
-                paint(color,thickness,Paint.Style.STROKE).apply {
+
+        // Time intervals are preserved to the minute; the separators are just visual.
+        if(data!=null)for(segment in data.periods) {
+            val start=minutes(segment.start) ?: continue
+            val end=minutes(segment.end) ?: continue
+            val light=if(segment.off)Color.rgb(249,130,143) else Color.rgb(112,230,183)
+            val shade=if(segment.off)Color.rgb(220,95,112) else Color.rgb(57,190,150)
+            c.drawArc(bounds,-90f+start/4f,(end-start)/4f,false,
+                paint(light,thickness,Paint.Style.STROKE).apply {
                     strokeCap=Paint.Cap.BUTT
+                    shader=LinearGradient(cx-radius,cy-radius,cx+radius,cy+radius,
+                        light,shade,Shader.TileMode.CLAMP)
                 })
         }
+        c.drawCircle(cx,cy,outer,
+            paint(Color.argb(95,187,208,218),side*.0022f,Paint.Style.STROKE))
+        c.drawCircle(cx,cy,inner,
+            paint(Color.argb(130,187,208,218),side*.0019f,Paint.Style.STROKE))
         for(hour in 0..23) {
             val angle=Math.toRadians((-90+hour*15).toDouble())
-            c.drawLine(polarX(cx,radius-thickness*.54f,angle),
-                polarY(cy,radius-thickness*.54f,angle),
-                polarX(cx,radius+thickness*.54f,angle),
-                polarY(cy,radius+thickness*.54f,angle),
-                paint(bg,side*.0026f))
-            write(c,hour.toString(),polarX(cx,radius+thickness*.74f,angle),
-                polarY(cy,radius+thickness*.74f,angle)+side*.012f,
+            c.drawLine(polarX(cx,inner-1f,angle),
+                polarY(cy,inner-1f,angle),
+                polarX(cx,outer+1f,angle),
+                polarY(cy,outer+1f,angle),
+                paint(bg,side*.0025f))
+            write(c,hour.toString(),polarX(cx,outer+side*.038f,angle),
+                polarY(cy,outer+side*.038f,angle)+side*.011f,
                 side*.035f,text,medium)
         }
-        val current=nowPeriod(data,now)
-        val accent=when(current?.off){true->red;false->green;null->gray}
+
+        // Short white hand + white circle at the ring, no arrowhead crossing centre.
         val elapsed=now.hour*3600+now.minute*60+now.second
         val angle=Math.toRadians(-90+elapsed/86400.0*360.0)
-        val arrowRadius=radius+thickness*.52f
-        val px=polarX(cx,arrowRadius,angle);val py=polarY(cy,arrowRadius,angle)
-        c.drawLine(polarX(cx,radius-thickness*.82f,angle),
-            polarY(cy,radius-thickness*.82f,angle),px,py,
-            paint(text,side*.0044f))
-        val ux=cos(angle).toFloat(); val uy=sin(angle).toFloat()
-        val tip=Path().apply {
-            moveTo(px+ux*side*.021f,py+uy*side*.021f)
-            lineTo(px-ux*side*.020f-uy*side*.012f,
-                   py-uy*side*.020f+ux*side*.012f)
-            lineTo(px-ux*side*.020f+uy*side*.012f,
-                   py-uy*side*.020f-ux*side*.012f)
-            close()
-        }
-        c.drawPath(tip,paint(text))
-        // The pointer stays on the ring instead of cutting across the central text.
-        write(c,now.format(DateTimeFormatter.ofPattern("d MMMM",Locale("uk"))),
-            cx,cy-side*.15f,side*.047f,muted,medium)
-        write(c,"1.1",cx,cy-side*.012f,side*.130f,text,bold)
-        write(c,"ПІДЧЕРГА",cx,cy+side*.040f,side*.031f,muted,medium)
-        c.drawLine(cx-side*.135f,cy+side*.080f,
-            cx+side*.135f,cy+side*.080f,paint(edge,side*.0025f))
-        write(c,when(current?.off){
+        val markRadius=radius+thickness*.31f
+        val px=polarX(cx,markRadius,angle);val py=polarY(cy,markRadius,angle)
+        c.drawLine(polarX(cx,inner-side*.018f,angle),
+            polarY(cy,inner-side*.018f,angle),px,py,paint(text,side*.0042f))
+        c.drawCircle(px,py,side*.011f,paint(text))
+
+        val current=nowPeriod(data,now)
+        val accent=when(current?.off){true->red;false->green;null->gray}
+        val status=when(current?.off){
             true->"Відключення"
             false->"Світло за графіком"
-            null->"Немає даних"
-        },cx,cy+side*.15f,side*.045f,accent,medium)
+            null->"Статус невідомий"
+        }
+        write(c,now.format(DateTimeFormatter.ofPattern("d MMMM",Locale("uk"))),
+            cx,cy-side*.152f,side*.047f,muted,medium)
+        write(c,"1.1",cx,cy-side*.017f,side*.128f,text,bold)
+        write(c,"ПІДЧЕРГА",cx,cy+side*.038f,side*.030f,muted,medium)
+        c.drawLine(cx-side*.139f,cy+side*.081f,
+            cx+side*.139f,cy+side*.081f,
+            paint(Color.rgb(93,116,133),side*.0018f))
+        write(c,status,cx,cy+side*.143f,side*.043f,accent,medium)
     }
 
     fun draw(kind:Kind,schedule:Schedule?,now:ZonedDateTime):Bitmap {
