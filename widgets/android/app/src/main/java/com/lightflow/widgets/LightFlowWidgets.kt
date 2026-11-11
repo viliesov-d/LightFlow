@@ -138,6 +138,7 @@ private object Renderer {
             for (id in ids) {
                 val views = RemoteViews(context.packageName, config.resource)
                 views.setImageViewBitmap(config.artwork, bitmap)
+                views.setViewVisibility(config.artwork, View.VISIBLE)
                 views.setViewVisibility(config.loading, View.GONE)
                 views.setOnClickPendingIntent(config.root, refreshIntent(context, id))
                 manager.updateAppWidget(id, views)
@@ -160,6 +161,9 @@ private object Renderer {
             6 -> R.drawable.ripple_stage_7
             else -> R.drawable.ripple_stage_8
         }
+        // Hide the old card artwork while the transparent ripple is visible.
+        // This avoids text/ring collisions and never introduces a square background.
+        views.setViewVisibility(config.artwork, View.INVISIBLE)
         views.setViewVisibility(config.loading, View.VISIBLE)
         views.setImageViewResource(config.ripple, frame)
         views.setTextViewText(config.label, when(step) {
@@ -168,7 +172,7 @@ private object Renderer {
             in 4..6 -> "Оновлюємо графік…"
             else -> "Перевіряємо дані…"
         })
-        // Text brightens over consecutive frames; the background keeps its rounded shape.
+        // Text brightens over consecutive frames; the overlay has no rectangular background.
         views.setTextColor(config.label, Color.parseColor(when(step) {
             0 -> "#0E1928"
             1 -> "#718DA6"
