@@ -1,4 +1,5 @@
 import { landingResponse } from './landing.mjs';
+import { manifestResponse, touchIconResponse } from './app-assets.mjs';
 import { groupDay, minuteOf } from './periods.mjs';
 
 import {
@@ -216,6 +217,8 @@ export function createWorker({now = () => new Date(), fetcher = fetch} = {}) {
 
       const url = new URL(request.url);
       if (url.pathname === '/') return landingResponse();
+      if (url.pathname === '/manifest.webmanifest') return manifestResponse();
+      if (url.pathname === '/apple-touch-icon.png') return touchIconResponse();
       const at = now();
       if (url.pathname === '/health') {
         if (!env?.SCHEDULES) return jsonResponse({
