@@ -67,9 +67,64 @@ function context(size) {
   const dc = new DrawContext();
   dc.size = new Size(size, size);
   dc.opaque = false; // Art has a transparent background, like Android LightFlow.
-  dc.respectScreenScale = false; // 360 / 600 logical pixels are enough for widgets.
+  dc.respectScreenScale = true; // Render sharp text and hairlines at the iPhone Retina scale.
   return dc;
 }
+
+// Soft Glass is intentionally subtle: a dark translucent tint, not a fake wallpaper
+// screenshot. iOS/Scriptable cannot sample and live-blur the Home Screen behind a widget.
+const GLASS = {
+  base: new Color("#12243A", 0.85),
+  depth: new Color("#081727", 0.20),
+  sheen: new Color("#A9D5EF", 0.075),
+  topEdge: new Color("#DDEFFF", 0.33),
+  bottomEdge: new Color("#B1CCE1", 0.13),
+  sideEdge: new Color("#B5D8F1", 0.14),
+  glimmer: new Color("#D7F5FF", 0.075),
+  textShadow: new Color("#06111E", 0.54)
+};
+function roundedPath(x,y,w,h,r) {
+  const p=new Path(),k=0.5522847498; // Cubic control factor for rounded corners.
+  p.move(new Point(x+r,y));
+  p.addLine(new Point(x+w-r,y));
+  p.addCurve(new Point(x+w,y+r),
+    new Point(x+w-r+k*r,y),new Point(x+w,y+r-k*r));
+  p.addLine(new Point(x+w,y+h-r));
+  p.addCurve(new Point(x+w-r,y+h),
+    new Point(x+w,y+h-r+k*r),new Point(x+w-r+k*r,y+h));
+  p.addLine(new Point(x+r,y+h));
+  p.addCurve(new Point(x,y+h-r),
+    new Point(x+r-k*r,y+h),new Point(x,y+h-r+k*r));
+  p.addLine(new Point(x,y+r));
+  p.addCurve(new Point(x+r,y),
+    new Point(x,y+r-k*r),new Point(x+r-k*r,y));
+  p.closeSubpath();
+  return p;
+}
+function glassSurface(dc,size,large=false) {
+  // Inset the decoration to keep the rim away from the iOS clipping boundary.
+  const inset=size*(large?0.028:0.038),corner=size*(large?0.090:0.125);
+  const x=inset,y=inset,w=size-2*inset,h=w;
+  pathFill(dc,roundedPath(x,y,w,h,corner),GLASS.base);
+  // Soft shade near the bottom and feather-light glints towards the top-left.
+  pathFill(dc,roundedPath(x+3,y+h*0.67,w-6,h*0.315,corner*0.5),GLASS.depth);
+  pathFill(dc,roundedPath(x+5,y+4,w-10,h*0.22,corner*0.72),GLASS.sheen);
+  pathStroke(dc,roundedPath(x+1,y+1,w-2,h-2,corner),GLASS.sideEdge,large?1.75:1.45);
+  const glow=new Path();
+  glow.move(new Point(x+corner*0.7,y+2));
+  glow.addCurve(new Point(x+w*0.74,y+2),
+    new Point(x+w*0.25,y+2),new Point(x+w*0.52,y+2));
+  pathStroke(dc,glow,GLASS.topEdge,large?2.2:1.65);
+  const rim=new Path();
+  rim.move(new Point(x+3,y+corner));
+  rim.addLine(new Point(x+3,y+h*0.49));
+  pathStroke(dc,rim,GLASS.glimmer,large?1.8:1.3);
+  const bottom=new Path();
+  bottom.move(new Point(x+corner*1.1,y+h-2));
+  bottom.addLine(new Point(x+w-corner*1.1,y+h-2));
+  pathStroke(dc,bottom,GLASS.bottomEdge,large?1.5:1.2);
+}
+
 function point(cx, cy, r, degree) {
   const angle = (degree - 90) * Math.PI / 180;
   return new Point(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
@@ -99,6 +154,10 @@ function centered(dc, message, y, size, fontSize, color = PAL.white, bold = fals
   dc.setFont(bold ? Font.boldSystemFont(fontSize) : Font.mediumSystemFont(fontSize));
   dc.setTextColor(color);
   dc.setTextAlignedCenter();
+  // Shadow is drawn first, then a crisp Retina rasterized foreground glyph.
+  dc.setTextColor(GLASS.textShadow);
+  dc.drawTextInRect(message, new Rect(0, y+Math.max(0.8,fontSize*0.043), size, fontSize * 1.45));
+  dc.setTextColor(color);
   dc.drawTextInRect(message, new Rect(0, y, size, fontSize * 1.45));
 }
 function circularBand(dc, cx, cy, start, end, outer, inner, color) {
@@ -145,20 +204,25 @@ function bulbIcon(dc, cx, cy, scale, tint, boltColor) {
 }
 function bulbArt(data, now) {
   const size = 360, dc = context(size);
+  glassSurface(dc,size);
   const span = periodNow(data, now);
   const tone = !span ? PAL.unknown : span.state === "scheduled_off" ? PAL.coral : PAL.gold;
-  bulbIcon(dc, 180, 138, 112, tone, !span ? PAL.unknown : PAL.bolt);
+  // Faint warm halo behind the bulb is controlled to stay inside the glass.
+  circle(dc, 180, 130, 79, new Color("#FFD383", span ? 0.040 : 0.015));
+  bulbIcon(dc, 180, 137, 108, tone, !span ? PAL.unknown : PAL.bolt);
   const hours = span ? span.start + "–" + span.end : "--:--–--:--";
-  centered(dc, hours, 275, size, 29, PAL.white, true);
+  centered(dc, hours, 270, size, 29, PAL.white, true);
   return dc.getImage();
 }
 function dialArt(data, now, compact) {
   const size = compact ? 380 : 620, dc = context(size);
+  glassSurface(dc,size,!compact);
   const cx = size/2, cy = size/2;
   const r = size * (compact ? 0.323 : 0.324);
   const thickness = size * (compact ? 0.102 : 0.105);
   const outer = r + thickness/2, inner = r-thickness/2;
-  circularBand(dc,cx,cy,0,1440,outer,inner,PAL.quiet);
+  // Muted track improves ring separation without a harsh black disc.
+  circularBand(dc,cx,cy,0,1440,outer,inner,new Color("#2C4558",0.69));
   if (data) for (const span of data.periods) {
     circularBand(dc,cx,cy,minuteOf(span.start),minuteOf(span.end),
       outer,inner,span.state==="scheduled_off"?PAL.coral:PAL.mint);
@@ -167,13 +231,15 @@ function dialArt(data, now, compact) {
   for (let hour = 0; hour < 24; hour++) {
     const p0=point(cx,cy,inner-1,hour*15);
     const p1=point(cx,cy,outer+1,hour*15);
-    line(dc,p0.x,p0.y,p1.x,p1.y,PAL.shadow,compact?2.0:2.8);
+    line(dc,p0.x,p0.y,p1.x,p1.y,new Color("#122236",0.72),compact?1.75:2.3);
     if (!compact || hour%3===0) {
       const pos=point(cx,cy,outer+(compact?19:28),hour*15);
       const fontsize=compact?14:19;
       dc.setFont(Font.mediumSystemFont(fontsize));
-      dc.setTextColor(PAL.white);
       dc.setTextAlignedCenter();
+      dc.setTextColor(GLASS.textShadow);
+      dc.drawTextInRect(String(hour),new Rect(pos.x-25,pos.y-fontsize*0.72+1.1,50,fontsize*1.5));
+      dc.setTextColor(PAL.white);
       dc.drawTextInRect(String(hour),new Rect(pos.x-25,pos.y-fontsize*0.72,50,fontsize*1.5));
     }
   }
@@ -184,12 +250,12 @@ function dialArt(data, now, compact) {
     timeZone:TZ,day:"numeric",month:compact?"short":"long"
   }).format(now);
   if(compact){
-    centered(dc,dateLabel,cy-69,size,17,PAL.muted);
+    centered(dc,dateLabel,cy-69,size,18,PAL.muted);
     centered(dc,"1.1",cy-37,size,56,PAL.white,true);
-    centered(dc,status,cy+26,size,status.length>10?17:20,tone,true);
+    centered(dc,status,cy+26,size,status.length>10?18:20,tone,true);
     centered(dc,"за графіком",cy+53,size,12,PAL.muted);
   } else {
-    centered(dc,dateLabel,cy-99,size,30,PAL.muted);
+    centered(dc,dateLabel,cy-99,size,31,PAL.muted);
     centered(dc,"1.1",cy-61,size,91,PAL.white,true);
     centered(dc,"ПІДЧЕРГА",cy+40,size,20,PAL.muted);
     line(dc,cx-87,cy+84,cx+87,cy+84,PAL.quiet,2);
