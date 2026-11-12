@@ -1,137 +1,242 @@
-// LightFlow — Scriptable (iOS): small status and large grouped schedule.
-// Вставте цей скрипт у безкоштовний застосунок Scriptable.
-// Джерело даних — лише онлайн API; файловий кеш відсутній.
+// LightFlow for iPhone — ONE Scriptable script, THREE Home Screen widgets.
+// Scriptable widget Parameter: "bulb" (small), "mini" (small), "large" (large).
+// Free forever: the script fetches the official schedule from our Cloudflare API.
+// No Apple Developer membership, custom IPA signing, local cache or data storage.
 const API = "https://lightflow-api.lightflow-viliesov.workers.dev/api/v1/schedule";
 const SITE = "https://lightflow-api.lightflow-viliesov.workers.dev/";
-const BLUE = new Color("#152236");
-const DARK = new Color("#101b2c");
-const PALE = new Color("#b9c9db");
-const RED = new Color("#fa8388");
-const GREEN = new Color("#55e0a8");
-const WHITE = new Color("#f9fbff");
+const TZ = "Europe/Kyiv";
+const PAL = {
+  mint: new Color("#6CE7BA"),
+  coral: new Color("#F77989"),
+  gold: new Color("#FFD383"),
+  bolt: new Color("#FFBA39"),
+  white: new Color("#F8FAFF"),
+  muted: new Color("#B6CADD"),
+  unknown: new Color("#889CAE"),
+  quiet: new Color("#25394F"),
+  shadow: new Color("#091524", 0.7)
+};
 
-function dateInKyiv(date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit"
+function kyivParts(date = new Date()) {
+  const p = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
   }).formatToParts(date);
-  const item = name => parts.find(part => part.type === name)?.value;
-  return item("year") + "-" + item("month") + "-" + item("day");
+  const obj = {};
+  for (const item of p) if (item.type !== "literal") obj[item.type] = item.value;
+  return obj;
 }
-function minutes(value) {
+function kyivDate(date = new Date()) {
+  const p = kyivParts(date);
+  return p.year + "-" + p.month + "-" + p.day;
+}
+function kyivMinutes(date = new Date()) {
+  const p = kyivParts(date);
+  return Number(p.hour) * 60 + Number(p.minute) + Number(p.second) / 60;
+}
+function minuteOf(value) {
   if (typeof value !== "string" || !/^\d{2}:\d{2}$/.test(value)) return NaN;
   const [h, m] = value.split(":").map(Number);
-  if (m > 59 || h > 24 || (h === 24 && m !== 0)) return NaN;
+  if (h < 0 || h > 24 || m < 0 || m > 59 || (h === 24 && m !== 0)) return NaN;
   return h * 60 + m;
 }
-function valid(payload) {
-  if (!payload || payload.kind !== "schedule" ||
-      !["scheduled_on", "scheduled_off"].includes(payload.state) ||
-      !Array.isArray(payload.periods) || payload.periods.length < 1 ||
-      !Array.isArray(payload.outages) || payload.date !== dateInKyiv(new Date())) return false;
-
-  const checked = Date.parse(payload.checkedAt);
-  if (!Number.isFinite(checked) || Date.now() - checked > 20 * 60 * 1000 ||
-      checked - Date.now() > 60 * 1000) return false;
-
+function verified(data, now = new Date()) {
+  if (!data || data.queue !== "1.1" || data.kind !== "schedule" ||
+      !["scheduled_on", "scheduled_off"].includes(data.state) ||
+      data.date !== kyivDate(now) ||
+      !Array.isArray(data.periods) || !data.periods.length ||
+      !Array.isArray(data.outages)) return false;
+  const checked = Date.parse(data.checkedAt);
+  const age = now.getTime() - checked;
+  if (!Number.isFinite(checked) || age < -60000 || age > 20 * 60 * 1000) return false;
   let cursor = 0;
-  for (const period of payload.periods) {
-    const start = minutes(period.start), end = minutes(period.end);
-    if (start !== cursor || end <= start || end > 1440 ||
-      !["scheduled_on", "scheduled_off"].includes(period.state)) return false;
-    cursor = end;
+  for (const p of data.periods) {
+    const a = minuteOf(p.start), b = minuteOf(p.end);
+    if (a !== cursor || !Number.isFinite(b) || b <= a || b > 1440 ||
+        !["scheduled_off", "scheduled_on"].includes(p.state)) return false;
+    cursor = b;
   }
   return cursor === 1440;
 }
-function addText(stack, value, color, size, bold = false) {
-  const item = stack.addText(value);
-  item.textColor = color;
-  item.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size);
-  item.lineLimit = 1;
-  item.minimumScaleFactor = 0.65;
-  return item;
+function periodNow(data, now = new Date()) {
+  if (!data) return null;
+  const t = kyivMinutes(now);
+  return data.periods.find(p => minuteOf(p.start) <= t && t < minuteOf(p.end)) || null;
 }
-function decorate(widget) {
-  widget.backgroundColor = DARK;
-  widget.url = SITE;
-  widget.setPadding(13, 13, 13, 13);
-  // Scriptable/iOS controls exact refresh timing. This is a request, not a guarantee.
-  widget.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
+function context(size) {
+  const dc = new DrawContext();
+  dc.size = new Size(size, size);
+  dc.opaque = false; // Art has a transparent background, like Android LightFlow.
+  dc.respectScreenScale = false; // 360 / 600 logical pixels are enough for widgets.
+  return dc;
 }
-function addHeader(widget, large = false) {
-  const header = widget.addStack();
-  header.layoutHorizontally();
-  addText(header, "⚡ LightFlow", WHITE, large ? 18 : 14, true);
-  header.addSpacer();
-  addText(header, "1.1", PALE, large ? 13 : 11, true);
-  widget.addSpacer(large ? 9 : 7);
+function point(cx, cy, r, degree) {
+  const angle = (degree - 90) * Math.PI / 180;
+  return new Point(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
 }
-function addUnknown(widget, large, message) {
-  addText(widget, "Статус невідомий", WHITE, large ? 18 : 15, true);
-  widget.addSpacer(6);
-  const row = widget.addText(message);
-  row.textColor = PALE;
-  row.font = Font.systemFont(large ? 12 : 10);
-  row.lineLimit = 3;
-  row.minimumScaleFactor = 0.8;
-  widget.addSpacer();
-  addText(widget, "Лише за графіком", PALE, 10);
+function pathStroke(dc, path, color, width) {
+  dc.setStrokeColor(color);
+  dc.setLineWidth(width);
+  dc.addPath(path);
+  dc.strokePath();
 }
-function addStatus(widget, data, large) {
-  const off = data.state === "scheduled_off";
-  const status = addText(widget, off ? "● Відключення" : "● Світло має бути",
-    off ? RED : GREEN, large ? 20 : 15, true);
-  status.lineLimit = 1;
-  widget.addSpacer(4);
-  const hint = data.nextChangeLocal && data.nextChangeLocal !== "24:00"
-    ? "Зміна за графіком о " + data.nextChangeLocal
-    : "До кінця доби без змін";
-  addText(widget, hint, PALE, large ? 12 : 10);
+function pathFill(dc, path, color) {
+  dc.setFillColor(color);
+  dc.addPath(path);
+  dc.fillPath();
 }
-function drawPeriods(widget, periods) {
-  widget.addSpacer(14);
-  addText(widget, "Графік на сьогодні", WHITE, 14, true);
-  widget.addSpacer(8);
-  // У великому віджеті кожен інтервал показано окремим кольоровим рядком.
-  for (const period of periods) {
-    const off = period.state === "scheduled_off";
-    const row = widget.addStack();
-    row.layoutHorizontally();
-    row.centerAlignContent();
-    row.backgroundColor = off ? new Color("#552d3a") : new Color("#1c4e40");
-    row.cornerRadius = 6;
-    row.setPadding(4, 7, 4, 7);
-    addText(row, period.start + "–" + period.end, WHITE, 11, true);
-    row.addSpacer();
-    addText(row, off ? "Без світла" : "Є світло", off ? RED : GREEN, 10);
-    widget.addSpacer(3);
+function line(dc, x1, y1, x2, y2, color, width) {
+  const path = new Path();
+  path.move(new Point(x1, y1));
+  path.addLine(new Point(x2, y2));
+  pathStroke(dc, path, color, width);
+}
+function circle(dc, x, y, radius, fill) {
+  dc.setFillColor(fill);
+  dc.fillEllipse(new Rect(x - radius, y - radius, radius * 2, radius * 2));
+}
+function centered(dc, message, y, size, fontSize, color = PAL.white, bold = false) {
+  dc.setFont(bold ? Font.boldSystemFont(fontSize) : Font.mediumSystemFont(fontSize));
+  dc.setTextColor(color);
+  dc.setTextAlignedCenter();
+  dc.drawTextInRect(message, new Rect(0, y, size, fontSize * 1.45));
+}
+function circularBand(dc, cx, cy, start, end, outer, inner, color) {
+  const steps = Math.max(2, Math.ceil((end - start) / 6));
+  const shape = new Path();
+  for (let i = 0; i <= steps; i++) {
+    const p = point(cx, cy, outer, (start + (end - start) * i / steps) / 4);
+    if (i === 0) shape.move(p);
+    else shape.addLine(p);
   }
+  for (let i = steps; i >= 0; i--) {
+    shape.addLine(point(cx, cy, inner, (start + (end - start) * i / steps) / 4));
+  }
+  shape.closeSubpath();
+  pathFill(dc, shape, color);
 }
-async function run() {
-  const family = config.widgetFamily || "small";
-  const large = family === "large";
-  const widget = new ListWidget();
-  decorate(widget);
-  addHeader(widget, large);
+function bulbIcon(dc, cx, cy, scale, tint, boltColor) {
+  // Symmetric bezier silhouette; light outline and small warm lightning.
+  const shape = new Path();
+  const X = n => cx + scale * n, Y = n => cy + scale * n;
+  shape.move(new Point(X(-0.32), Y(0.24)));
+  shape.addCurve(new Point(X(0), Y(-0.79)),
+    new Point(X(-0.82), Y(-0.23)), new Point(X(-0.45), Y(-0.79)));
+  shape.addCurve(new Point(X(0.32), Y(0.24)),
+    new Point(X(0.45), Y(-0.79)), new Point(X(0.82), Y(-0.23)));
+  shape.addCurve(new Point(X(0.20), Y(0.50)),
+    new Point(X(0.25), Y(0.31)), new Point(X(0.20), Y(0.40)));
+  shape.addLine(new Point(X(-0.20), Y(0.50)));
+  shape.addCurve(new Point(X(-0.32), Y(0.24)),
+    new Point(X(-0.20), Y(0.40)), new Point(X(-0.25), Y(0.31)));
+  shape.closeSubpath();
+  pathStroke(dc, shape, tint, scale * 0.060);
+  const bolt = new Path();
+  const coords = [[0.08,-0.48],[-0.21,0.06],[-0.03,0.06],[-0.11,0.34],
+    [0.23,-0.17],[0.04,-0.17]];
+  for (let i=0;i<coords.length;i++){
+    const p=new Point(X(coords[i][0]), Y(coords[i][1]));
+    if(i===0) bolt.move(p); else bolt.addLine(p);
+  }
+  bolt.closeSubpath();
+  pathFill(dc,bolt,boltColor);
+  line(dc,X(-0.22),Y(0.64),X(0.22),Y(0.64),tint,scale*0.06);
+  line(dc,X(-0.17),Y(0.77),X(0.17),Y(0.77),tint,scale*0.06);
+}
+function bulbArt(data, now) {
+  const size = 360, dc = context(size);
+  const span = periodNow(data, now);
+  const tone = !span ? PAL.unknown : span.state === "scheduled_off" ? PAL.coral : PAL.gold;
+  bulbIcon(dc, 180, 138, 112, tone, !span ? PAL.unknown : PAL.bolt);
+  const hours = span ? span.start + "–" + span.end : "--:--–--:--";
+  centered(dc, hours, 275, size, 29, PAL.white, true);
+  return dc.getImage();
+}
+function dialArt(data, now, compact) {
+  const size = compact ? 380 : 620, dc = context(size);
+  const cx = size/2, cy = size/2;
+  const r = size * (compact ? 0.323 : 0.324);
+  const thickness = size * (compact ? 0.102 : 0.105);
+  const outer = r + thickness/2, inner = r-thickness/2;
+  circularBand(dc,cx,cy,0,1440,outer,inner,PAL.quiet);
+  if (data) for (const span of data.periods) {
+    circularBand(dc,cx,cy,minuteOf(span.start),minuteOf(span.end),
+      outer,inner,span.state==="scheduled_off"?PAL.coral:PAL.mint);
+  }
+  // Thin separators preserve 24 hour divisions even when only 8 labels fit.
+  for (let hour = 0; hour < 24; hour++) {
+    const p0=point(cx,cy,inner-1,hour*15);
+    const p1=point(cx,cy,outer+1,hour*15);
+    line(dc,p0.x,p0.y,p1.x,p1.y,PAL.shadow,compact?2.0:2.8);
+    if (!compact || hour%3===0) {
+      const pos=point(cx,cy,outer+(compact?19:28),hour*15);
+      const fontsize=compact?14:19;
+      dc.setFont(Font.mediumSystemFont(fontsize));
+      dc.setTextColor(PAL.white);
+      dc.setTextAlignedCenter();
+      dc.drawTextInRect(String(hour),new Rect(pos.x-25,pos.y-fontsize*0.72,50,fontsize*1.5));
+    }
+  }
+  const span=periodNow(data,now);
+  const tone=!span?PAL.unknown:span.state==="scheduled_off"?PAL.coral:PAL.mint;
+  const status=!span?"Немає графіка":span.state==="scheduled_off"?"Відключення":"Є світло";
+  const dateLabel=new Intl.DateTimeFormat("uk-UA", {
+    timeZone:TZ,day:"numeric",month:compact?"short":"long"
+  }).format(now);
+  if(compact){
+    centered(dc,dateLabel,cy-69,size,17,PAL.muted);
+    centered(dc,"1.1",cy-37,size,56,PAL.white,true);
+    centered(dc,status,cy+26,size,status.length>10?17:20,tone,true);
+    centered(dc,"за графіком",cy+53,size,12,PAL.muted);
+  } else {
+    centered(dc,dateLabel,cy-99,size,30,PAL.muted);
+    centered(dc,"1.1",cy-61,size,91,PAL.white,true);
+    centered(dc,"ПІДЧЕРГА",cy+40,size,20,PAL.muted);
+    line(dc,cx-87,cy+84,cx+87,cy+84,PAL.quiet,2);
+    centered(dc,!span?"Статус невідомий":span.state==="scheduled_off"?
+      "Відключення":"Світло за графіком",cy+98,size,27,tone,true);
+  }
+  // The hand is calculated using current Kyiv time when iOS renders the widget.
+  // iOS chooses future refreshes; it cannot animate the hand continuously here.
+  const position=kyivMinutes(now)/4;
+  const from=point(cx,cy,inner-(compact?7:12),position);
+  const to=point(cx,cy,r+thickness*0.35,position);
+  line(dc,from.x,from.y,to.x,to.y,PAL.white,compact?2.5:3.4);
+  circle(dc,to.x,to.y,compact?3.5:5,PAL.white);
+  return dc.getImage();
+}
+async function fetchSchedule(now) {
   try {
     const req = new Request(API);
     req.timeoutInterval = 12;
     const data = await req.loadJSON();
-    if (!valid(data)) {
-      addUnknown(widget, large, "Немає актуального перевіреного графіка.");
-    } else {
-      addStatus(widget, data, large);
-      if (large) drawPeriods(widget, data.periods);
-      else {
-        widget.addSpacer();
-        addText(widget, "Черкаська область", PALE, 10);
-      }
-    }
-  } catch (error) {
-    addUnknown(widget, large, "Інтернет або сервер недоступний.");
+    return verified(data,now) ? data : null;
+  } catch (_) {
+    return null;
   }
+}
+async function run() {
+  const now=new Date();
+  const param=String(args.widgetParameter || "bulb").trim().toLowerCase();
+  const family=config.widgetFamily || "small";
+  // Set widget Parameter to bulb or mini for two distinct SMALL widgets.
+  // For a LARGE widget, use the same script with Parameter "large".
+  const mode=family==="large" || param==="large" && family!=="small" ?
+    "large" : param==="mini" ? "mini" : "bulb";
+  const data=await fetchSchedule(now);
+  const widget=new ListWidget();
+  widget.setPadding(0,0,0,0);
+  widget.backgroundColor=new Color("#000000",0); // iOS may add its own widget backdrop.
+  widget.url=SITE; // iOS Scriptable widget taps open the LightFlow web app.
+  widget.refreshAfterDate=new Date(now.getTime()+15*60*1000);
+  const art=mode==="large"?dialArt(data,now,false):
+    mode==="mini"?dialArt(data,now,true):bulbArt(data,now);
+  const image=widget.addImage(art);
+  image.applyFittingContentMode();
+  image.centerAlignImage();
   Script.setWidget(widget);
-  if (!config.runsInWidget) {
-    if (large) await widget.presentLarge();
+  if(!config.runsInWidget){
+    if(mode==="large")await widget.presentLarge();
     else await widget.presentSmall();
   }
   Script.complete();
