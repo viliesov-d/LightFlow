@@ -113,9 +113,16 @@ export function parseArticle(html, publication, queue = QUEUE) {
   const heading = text.match(/(?:Оновлено\s+)?Графік погодинних відключень\s*\(ГПВ\)\s*на\s+\d{1,2}\s+[а-яіїєґ]+/iu)?.[0] ?? '';
   const articleDate = targetDateFromTitle(heading, publication.publishedAt);
   if (!articleDate || articleDate !== publication.date) throw new Error('Дата статті не відповідає даті публікації');
-  const anchor = text.toLowerCase().indexOf('години відсутності електропостачання:');
+  // The company now publishes both:
+  // "Години відсутності електропостачання:"
+  // and "Години відсутності електропостачання по області (крім ...):"
+  // Accept the official expanded regional heading, but not arbitrary prose.
+  const lines = text.split('\n');
+  const anchor = lines.findIndex(line =>
+    /^Години\s+відсутності\s+електропостачання(?:\s+по\s+області(?:\s*\([^\n)]*\))?)?\s*:\s*$/iu.test(line.trim())
+  );
   if (anchor < 0) throw new Error('Не знайдено офіційний перелік годин');
-  const rows = text.slice(anchor).split('\n');
+  const rows = lines.slice(anchor + 1);
   const row = rows.find(line => new RegExp(`^\\s*${queue.replace('.', '\\.')}\\s+`).test(line));
   if (!row) throw new Error(`Чергу ${queue} не знайдено в статті`);
   return {
