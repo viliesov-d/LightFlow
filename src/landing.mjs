@@ -308,8 +308,19 @@ const HTML = String.raw`<!doctype html>
     el('off-total').textContent=formatLength(offMinutes);
     el('on-total').textContent=formatLength(1440-offMinutes);
     el('updated').textContent=data.checkedAt?'Перевірено: '+stamp.format(new Date(data.checkedAt)):'Час перевірки невідомий';
-    if(typeof data.sourceUrl==='string' && /^https:\/\/(?:www\.)?cherkasyoblenergo\.com\/media\//.test(data.sourceUrl)) {
+    // A Telegram link is safe only if it points to the company's exact official channel.
+    // No untrusted URL from the schedule API is ever inserted into the page.
+    if(typeof data.sourceUrl==='string' &&
+      /^https:\/\/(?:www\.)?cherkasyoblenergo\.com\/media\/[a-z0-9-]+$/i.test(data.sourceUrl)) {
       el('source-link').href=data.sourceUrl;
+      el('source-link').textContent='Джерело: сайт обленерго';
+    } else if(typeof data.sourceUrl==='string' &&
+      /^https:\/\/t\.me\/pat_cherkasyoblenergo\/\d+$/.test(data.sourceUrl)) {
+      el('source-link').href=data.sourceUrl;
+      el('source-link').textContent='Джерело: офіційний Telegram';
+    } else {
+      el('source-link').href='https://www.cherkasyoblenergo.com/media';
+      el('source-link').textContent='Офіційне джерело';
     }
     el('available').hidden=false;
     el('empty').hidden=true;
