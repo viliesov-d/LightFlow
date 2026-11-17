@@ -19,15 +19,30 @@ function kyivDateTime(date) {
 }
 
 function targetDate(text,publishedAtLocal) {
-  // Updates and normal titled posts.
-  const title=text.match(/(?:оновлено\s+|оновлення\s+)?графік[а]?\s+погодинних\s+відключень\s*\(гпв\)\s*на\s+(\d{1,2}\s+[а-яіїєґ]+)/iu);
+  // Normal articles: "Графік погодинних відключень (ГПВ) на 18 листопада".
+  // Some notices say "вимкнень"; both are the official ГПВ terminology.
+  const title=text.match(/(?:оновлено\s+|оновлення\s+)?графік[а]?\s+погодинних\s+(?:відключень|вимкнень)\s*\(гпв\)\s*на\s+(\d{1,2}\s+[а-яіїєґ]+)/iu);
   if(title)return targetDateFromTitle(
     'Графік погодинних відключень (ГПВ) на '+title[1],publishedAtLocal);
-  // Typical posts start with "17 листопада з 00:00 до 24:00 у Черкаській
-  // області будуть застосовані графіки погодинних відключень (ГПВ)".
-  const intro=text.match(/(\d{1,2}\s+[а-яіїєґ]+)\s+з\s+\d{2}:\d{2}\s+до\s+\d{2}:\d{2}\s+у\s+Черкаській\s+області\s+будуть\s+застосовані\s+графіки\s+погодинних\s+відключень\s*\(гпв\)/iu);
-  return intro?targetDateFromTitle(
-    'Графік погодинних відключень (ГПВ) на '+intro[1],publishedAtLocal):null;
+
+  // "18 листопада з 00:00 до 24:00 у Черкаській області
+  //  будуть застосовані графіки погодинних відключень (ГПВ)".
+  const intro=text.match(/(\d{1,2}\s+[а-яіїєґ]+)\s+з\s+\d{2}:\d{2}\s+до\s+\d{2}:\d{2}\s+у\s+Черкаській\s+області\s+будуть\s+застосовані\s+графіки\s+погодинних\s+(?:відключень|вимкнень)\s*\(гпв\)/iu);
+  if(intro)return targetDateFromTitle(
+    'Графік погодинних відключень (ГПВ) на '+intro[1],publishedAtLocal);
+
+  // Real official Telegram wording on 18 Nov 2026:
+  // "За командою НЕК «Укренерго»18 листопада по Черкаській області
+  //  з 00:00 до 24:00 застосовуватимуться графіки погодинних вимкнень (ГПВ)".
+  const command=text.match(/(\d{1,2}\s+[а-яіїєґ]+)\s+по\s+Черкаській\s+області\s+з\s+\d{2}:\d{2}\s+до\s+\d{2}:\d{2}\s+застосовуватимуться\s+графіки\s+погодинних\s+(?:відключень|вимкнень)\s*\(гпв\)/iu);
+  if(command)return targetDateFromTitle(
+    'Графік погодинних відключень (ГПВ) на '+command[1],publishedAtLocal);
+
+  // Updated daily schedules can omit "(ГПВ)"; require an explicit
+  // "Оновлений графік погодинних вимкнень" followed by a specific date.
+  const updated=text.match(/оновлен(?:ий|о)\s+графік\s+погодинних\s+(?:вимкнень|відключень)[^\n]{0,140}?(\d{1,2}\s+[а-яіїєґ]+)/iu);
+  return updated?targetDateFromTitle(
+    'Графік погодинних відключень (ГПВ) на '+updated[1],publishedAtLocal):null;
 }
 
 /** Read separate posts from the channel's public /s/ HTML page. */
