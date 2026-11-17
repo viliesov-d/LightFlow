@@ -1,6 +1,7 @@
 import { landingResponse } from './landing.mjs';
 import { manifestResponse, touchIconResponse } from './app-assets.mjs';
 import { groupDay, minuteOf } from './periods.mjs';
+import {OFFICIAL_TELEGRAM,parseTelegramChannel,newestTelegramForDate} from './telegram.mjs';
 
 import {
   SOURCE_BASE,
@@ -44,7 +45,7 @@ export function viewSchedule(record, date, at = new Date()) {
   const baseline = {
     region: REGION, queue: QUEUE, date, timezone: 'Europe/Kyiv',
     kind: 'unknown', state: 'unknown', sourceUrl: null, periods: null,
-    checkedAt: null, publishedAtLocal: null, outages: null,
+    checkedAt: null, publishedAtLocal: null, sourceKind: null, outages: null,
     nextChangeLocal: null, reason: 'not_checked'
   };
   if (!record || record.date !== date) return baseline;
@@ -55,6 +56,7 @@ export function viewSchedule(record, date, at = new Date()) {
     ...baseline,
     checkedAt: record.checkedAt,
     sourceUrl: record.sourceUrl ?? null,
+    sourceKind: record.sourceKind ?? 'official_media',
     publishedAtLocal: record.publishedAtLocal ?? null
   };
   if (!Number.isFinite(checkedMs) || ageMs < -60_000 || ageMs > FRESH_FOR_MS) {
@@ -102,64 +104,104 @@ async function fetchText(fetcher, url) {
  * Runs only in a scheduled Worker; never in a public GET request.
  * Only confirmed new content may replace a verified schedule.
  */
-export async function syncSchedules(env, {at = new Date(), fetcher = fetch} = {}) {
-  if (!env?.SCHEDULES) throw new Error('Missing Cloudflare KV binding SCHEDULES');
+/**
+ * Resolve today's and tomorrow's 1.1 schedules from TWO verified first-party sources.
+ *
+ * Priority: exact official media article first; if unavailable or missing,
+ * fall back to the company's public Telegram channel (not its phone-verified bot).
+ * A failed newer media revision is never replaced by an older Telegram post.
+ * Both paths enforce the same queue/date/interval validation.
+ */
+export async function syncSchedules(env,{at=new Date(),fetcher=fetch}={}) {
+  if(!env?.SCHEDULES)throw new Error('Missing Cloudflare KV binding SCHEDULES');
 
-  const index = parseMediaIndex(await fetchText(fetcher, `${SOURCE_BASE}/media`));
-  if (index.length === 0) throw new Error('No timetable announcements parsed from source index');
-
-  const today = kyivClock(at).date;
-  const days = [today, tomorrowOf(today)];
-  const result = [];
-  for (const date of days) {
-    const key = keyFor(date);
-    const previous = await env.SCHEDULES.get(key, 'json');
-    const latest = newestPublicationForDate(index, date);
-    const checkedAt = at.toISOString();
-
-    if (!latest) {
-      // If it vanishes from the recent list, never overwrite an earlier verified schedule.
-      if (previous?.kind === 'schedule') {
-        result.push({date, outcome: 'retained_previous_until_stale'});
-      } else {
-        await env.SCHEDULES.put(key, JSON.stringify({
-          kind: 'unknown', reason: 'not_found_in_recent_publications',
-          region: REGION, queue: QUEUE, date, checkedAt
-        }), {expirationTtl: 604800});
-        result.push({date, outcome: 'not_found'});
+  let index=[], mediaError=null;
+  try{
+    index=parseMediaIndex(await fetchText(fetcher,SOURCE_BASE+'/media'));
+  }catch(error){
+    mediaError=error;
+    console.error('LightFlow media index unavailable:',String(error));
+  }
+  let telegramRequest=null;
+  async function telegramPosts(){
+    if(!telegramRequest){
+      telegramRequest=fetchText(fetcher,OFFICIAL_TELEGRAM)
+        .then(html=>parseTelegramChannel(html,{at}))
+        .catch(error=>{
+          console.error('LightFlow official Telegram fallback unavailable:',String(error));
+          return [];
+        });
+    }
+    return telegramRequest;
+  }
+  const dates=[kyivClock(at).date,tomorrowOf(kyivClock(at).date)];
+  const report=[];
+  for(const date of dates){
+    const key=keyFor(date);
+    const previous=await env.SCHEDULES.get(key,'json');
+    const latest=newestPublicationForDate(index,date);
+    const checkedAt=at.toISOString();
+    let mediaSchedule=null, articleError=null;
+    if(latest){
+      try{
+        mediaSchedule=parseArticle(await fetchText(fetcher,latest.url),latest,QUEUE);
+        mediaSchedule.sourceKind='official_media';
+      }catch(error){
+        articleError=error;
+        console.error('LightFlow official article invalid:',latest.url,String(error));
       }
+    }
+    // A publication that is present and parseable remains the preferred source.
+    // We never treat an absent media-index entry as proof that the day is outage-free.
+    let selected=mediaSchedule,origin='media';
+    if(!selected){
+      const messages=await telegramPosts();
+      const alternate=newestTelegramForDate(messages,date);
+      // If the site references a newer (but unparseable) revision, don't show
+      // an older Telegram schedule as if it superseded that revision.
+      if(alternate && (!latest || alternate.publishedAtLocal>=latest.publishedAt)){
+        selected=alternate;origin='telegram';
+      }
+    }
+    if(selected){
+      const changed=previous?.sourceUrl!==selected.sourceUrl ||
+        JSON.stringify(previous?.outages)!==JSON.stringify(selected.outages);
+      const revision=(previous?.revision??0)+(changed?1:0);
+      const record={...selected,kind:'schedule',revision:Math.max(1,revision),checkedAt};
+      await env.SCHEDULES.put(key,JSON.stringify(record),{expirationTtl:604800});
+      if(changed){
+        const historyKey='version:'+REGION+':'+QUEUE+':'+date+':'+
+          encodeURIComponent(selected.publishedAtLocal);
+        await env.SCHEDULES.put(historyKey,JSON.stringify(record),{expirationTtl:2592000});
+      }
+      report.push({date,outcome:origin==='telegram'?'verified_telegram':'verified',revision:record.revision});
       continue;
     }
 
-    try {
-      const article = await fetchText(fetcher, latest.url);
-      const schedule = parseArticle(article, latest, QUEUE);
-      const revision = previous?.sourceUrl === schedule.sourceUrl
-        ? (previous.revision ?? 1)
-        : (previous?.revision ?? 0) + 1;
-
-      const record = {...schedule, kind: 'schedule', revision, checkedAt};
-      await env.SCHEDULES.put(key, JSON.stringify(record), {expirationTtl: 604800});
-
-      if (previous?.sourceUrl !== schedule.sourceUrl) {
-        const historicalKey = `version:${REGION}:${QUEUE}:${date}:${encodeURIComponent(schedule.publishedAtLocal)}`;
-        await env.SCHEDULES.put(historicalKey, JSON.stringify(record), {expirationTtl: 2592000});
-      }
-      result.push({date, outcome: 'verified', revision});
-    } catch (error) {
-      // An announced new revision cannot silently fall back to the old one.
-      if (previous?.sourceUrl !== latest.url) {
-        await env.SCHEDULES.put(key, JSON.stringify({
-          kind: 'unknown', region: REGION, queue: QUEUE, date, checkedAt,
-          sourceUrl: latest.url, publishedAtLocal: latest.publishedAt,
-          reason: 'new_revision_not_verified', revision: previous?.revision ?? 0
-        }), {expirationTtl: 604800});
-      }
-      result.push({date, outcome: 'source_error'});
-      console.error('LightFlow verification failed', date, String(error));
+    const newRevisionUnverified=latest && articleError &&
+      previous?.sourceUrl!==latest.url;
+    if(newRevisionUnverified){
+      await env.SCHEDULES.put(key,JSON.stringify({
+        kind:'unknown',region:REGION,queue:QUEUE,date,checkedAt,
+        sourceUrl:latest.url,sourceKind:'official_media',
+        publishedAtLocal:latest.publishedAt,
+        reason:'new_revision_not_verified',revision:previous?.revision??0
+      }),{expirationTtl:604800});
+      report.push({date,outcome:'source_error'});
+    }else if(previous?.kind==='schedule'){
+      // Keep the old record for historical continuity but DO NOT update checkedAt:
+      // viewSchedule automatically makes it unknown after 20 minutes.
+      report.push({date,outcome:'retained_previous_until_stale'});
+    }else{
+      const reason=mediaError?'source_unavailable':
+        articleError?'source_error':'not_found_in_recent_publications';
+      await env.SCHEDULES.put(key,JSON.stringify({
+        kind:'unknown',reason,region:REGION,queue:QUEUE,date,checkedAt
+      }),{expirationTtl:604800});
+      report.push({date,outcome:reason==='not_found_in_recent_publications'?'not_found':'source_error'});
     }
   }
-  return result;
+  return report;
 }
 
 // Persist only a sparse heartbeat, to stay within Cloudflare KV Free write limits.
