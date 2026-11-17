@@ -102,3 +102,23 @@ test('new unparseable official revision is not replaced by an older telegram pub
   assert.equal(result[0].outcome,'source_error');
   assert.equal((await kv.get('schedule:cherkasy:1.1:2026-11-17','json')).kind,'unknown');
 });
+
+
+test('website labels verified Telegram provenance without accepting arbitrary URLs',async()=>{
+  const {landingResponse}=await import('../src/landing.mjs');
+  const html=await (await landingResponse()).text();
+  assert.match(html,/Джерело: офіційний Telegram/);
+  assert.match(html,/pat_cherkasyoblenergo/);
+  assert.match(html,/Джерело: сайт обленерго/);
+  assert.match(html,/source-link/);
+});
+
+test('malformed or forged Telegram HTML never creates an outage schedule',()=>{
+  const forged=feed.replaceAll('pat_cherkasyoblenergo/','unofficial_cherkasy/');
+  assert.equal(parseTelegramChannel(forged,{at}).length,0);
+  const withoutTime=feed.replace(/<time datetime="[^"]+"><\/time>/g,'<time></time>');
+  assert.equal(parseTelegramChannel(withoutTime,{at}).length,0);
+  const invalid=makePost(600,'2026-11-16T22:00:00Z',
+    ordinary('17 листопада','1.1 08:00 - 11:00, 10:00 - 12:00'));
+  assert.equal(parseTelegramChannel(invalid,{at}).length,0);
+});
