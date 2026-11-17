@@ -198,7 +198,8 @@ export async function syncSchedules(env,{at=new Date(),fetcher=fetch}={}) {
       await env.SCHEDULES.put(key,JSON.stringify({
         kind:'unknown',reason,region:REGION,queue:QUEUE,date,checkedAt
       }),{expirationTtl:604800});
-      report.push({date,outcome:reason==='not_found_in_recent_publications'?'not_found':'source_error'});
+      report.push({date,outcome:reason==='not_found_in_recent_publications'?'not_found':'source_error',
+        ...(mediaError?{reason:classifySyncError(mediaError)}:{})});
     }
   }
   return report;
@@ -303,7 +304,12 @@ export function createWorker({now = () => new Date(), fetcher = fetch} = {}) {
       ctx.waitUntil((async () => {
         try {
           const outcomes = await syncSchedules(env, {at, fetcher});
-          await recordMonitor(env, at, {status: 'ok', outcomes});
+          const failed=outcomes.length>0 && outcomes.every(item=>item.outcome==='source_error');
+          await recordMonitor(env,at,{
+            status:failed?'error':'ok',
+            reason:failed?(outcomes[0].reason??'source_unavailable'):null,
+            outcomes
+          });
         } catch (error) {
           console.error('LightFlow cron sync failed:', String(error));
           await recordMonitor(env, at, {
