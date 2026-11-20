@@ -86,20 +86,29 @@ function timeToMinutes(time, allow24 = false) {
   return hour * 60 + minute;
 }
 
-export function parseQueueIntervals(line, queue = QUEUE) {
+export function parseQueueIntervals(line, queueOrOptions = QUEUE) {
+  const queue = typeof queueOrOptions === 'string' ? queueOrOptions : queueOrOptions.queue ?? QUEUE;
+  const allowMidnightEnd = typeof queueOrOptions === 'object' && queueOrOptions?.allowMidnightEnd === true;
   const match = String(line).trim().match(/^([1-6]\.[12])\s+(.+)$/u);
   if (!match || match[1] !== queue) throw new Error(`Не знайдено чергу ${queue}`);
   // Офіційні публікації іноді розривають час пробілом: «00 :00».
   // Нормалізуємо лише пробіли навколо двокрапки, не виправляючи довільні цифри.
-  const parts = match[2].replace(/(\d{1,2})\s*:\s*(\d{2})/g, '$1:$2').split(',').map(x => x.trim());
+  // The official 20 Nov page broke the hour "16:00" into "1 6:00".
+  // Rejoin exactly two single hour digits before a colon; still reject
+  // impossible hours such as "2 9:00" and do not infer missing digits.
+  const normalizedHours = match[2].replace(/\b([012])\s+([0-9])(?=\s*:)/g, '$1$2');
+  const parts = normalizedHours.replace(/(\d{1,2})\s*:\s*(\d{2})/g, '$1:$2').split(',').map(x => x.trim());
   if (!parts.length || parts.some(x => !x)) throw new Error('Порожній інтервал');
   const outages = parts.map(part => {
     const range = part.match(/^(\d{2}:\d{2})\s*[-–—]\s*(\d{2}:\d{2})$/u);
     if (!range) throw new Error(`Нерозпізнаний інтервал: ${part}`);
     const startMinute = timeToMinutes(range[1]);
-    const endMinute = timeToMinutes(range[2], true);
+    // Telegram sometimes writes the end of day as 00:00 instead of 24:00.
+    // Never interpret 00:00 as next day in the media-site parser.
+    const midnightEnd = allowMidnightEnd && range[2] === '00:00' && startMinute > 0;
+    const endMinute = midnightEnd ? 1440 : timeToMinutes(range[2], true);
     if (startMinute >= endMinute) throw new Error(`Некоректний інтервал: ${part}`);
-    return {start: range[1], end: range[2], startMinute, endMinute};
+    return {start: range[1], end: midnightEnd ? '24:00' : range[2], startMinute, endMinute};
   });
   outages.sort((a, b) => a.startMinute - b.startMinute);
   if (outages.some((interval, i) => i > 0 && outages[i - 1].endMinute > interval.startMinute)) {

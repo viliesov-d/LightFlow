@@ -74,7 +74,7 @@ export function parseTelegramChannel(html,{at=new Date(),queue=QUEUE}={}) {
         region:'cherkasy',queue,date,timezone:'Europe/Kyiv',
         publishedAtLocal,sourceUrl:'https://t.me/'+post,
         sourceKind:'official_telegram',
-        outages:parseQueueIntervals(row,queue)
+        outages:parseQueueIntervals(row,{queue,allowMidnightEnd:true})
       });
     }catch{
       // Invalid or overlapping intervals must never be treated as valid data.
