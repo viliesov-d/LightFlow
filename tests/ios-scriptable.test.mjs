@@ -56,7 +56,10 @@ function makeSchedule(){
 
 async function simulate({parameter='bulb',family='small',response=makeSchedule()}) {
   const operations=[];
-  class FakeColor { constructor(hex,alpha){this.hex=hex;this.alpha=alpha;} }
+  class FakeColor {
+    constructor(hex,alpha=1){this.hex=hex;this.alpha=alpha;}
+    static clear(){return new FakeColor('#000000',0);}
+  }
   class FakeSize { constructor(width,height){this.width=width;this.height=height;} }
   class FakePoint { constructor(x,y){this.x=x;this.y=y;} }
   class FakeRect { constructor(x,y,width,height){Object.assign(this,{x,y,width,height});} }
@@ -69,7 +72,7 @@ async function simulate({parameter='bulb',family='small',response=makeSchedule()
     setFillColor(){} fillPath(){} fillEllipse(){}
     setFont(){} setTextColor(){} setTextAlignedCenter(){}
     drawTextInRect() {}
-    getImage(){return {size:this.size};}
+    getImage(){return {size:this.size,opaque:this.opaque,respectScreenScale:this.respectScreenScale};}
   }
   class FakeWidget {
     constructor(){this.art=null;}
@@ -106,6 +109,9 @@ test('Scriptable executes all modes and creates correctly sized widget art',asyn
     const result=await simulate(item);
     assert.equal(result.model.completed,true);
     assert.equal(result.model.widget.art.size.width,item.size);
+    assert.equal(result.model.widget.art.opaque,false,'DrawContext must be transparent');
+    assert.equal(result.model.widget.art.respectScreenScale,true,'Keep Retina rendering');
+    assert.equal(result.model.widget.backgroundColor.alpha,0,'Scriptable must not paint a background');
     assert.equal(result.model.widget.url,'https://lightflow-api.lightflow-viliesov.workers.dev/');
     assert.ok(result.operations.length>0);
   }
