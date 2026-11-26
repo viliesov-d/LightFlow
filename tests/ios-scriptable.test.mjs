@@ -7,7 +7,7 @@ import vm from 'node:vm';
 const file='widgets/ios/LightFlow.js';
 const source=readFileSync(file,'utf8');
 
-test('one Scriptable script supports all three true iPhone widget designs',()=>{
+test('one Scriptable script supports all four iPhone widget designs',()=>{
   const check=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
   assert.equal(check.status,0,check.stderr);
   for(const required of [
@@ -70,8 +70,8 @@ async function simulate({parameter='bulb',family='small',response=makeSchedule()
     constructor(){this.size=new FakeSize(0,0);this.opaque=true;operations.push('newContext');}
     setStrokeColor(){} setLineWidth(){} addPath(){} strokePath(){}
     setFillColor(){} fillPath(){} fillEllipse(){}
-    setFont(){} setTextColor(){} setTextAlignedCenter(){}
-    drawTextInRect() {}
+    setFont(){} setTextColor(){} setTextAlignedCenter(){} setTextAlignedLeft(){}
+    drawTextInRect(value) { operations.push(value); }
     getImage(){return {size:this.size,opaque:this.opaque,respectScreenScale:this.respectScreenScale};}
   }
   class FakeWidget {
@@ -124,4 +124,27 @@ test('invalid or stale API never produces made-up active periods',async()=>{
   const wrong={...makeSchedule(),periods:[{start:'00:00',end:'23:00',state:'scheduled_on'}]};
   const r2=await simulate({parameter:'bulb',family:'small',response:wrong});
   assert.equal(r2.model.completed,true);
+});
+
+test('rectangular lock screen displays an explicit monochrome status and current interval',async()=>{
+  for(const [state,status] of [['scheduled_on','Є світло'],['scheduled_off','Немає світла']]){
+    const response={...makeSchedule(),state,periods:[{start:'00:00',end:'24:00',state}],outages:state==='scheduled_off'?[{start:'00:00',end:'24:00'}]:[]};
+    const {model,operations}=await simulate({parameter:'lock',family:'accessoryRectangular',response});
+    assert.equal(model.completed,true);
+    assert.equal(model.widget.art.size.width,320);
+    assert.equal(model.widget.art.size.height,132);
+    assert.equal(model.widget.art.opaque,false);
+    assert.equal(model.widget.backgroundColor.alpha,0);
+    assert.ok(operations.includes(status));
+    assert.ok(operations.includes('00:00–24:00'));
+    assert.equal(model.widget.url,'https://lightflow-api.lightflow-viliesov.workers.dev/');
+  }
+});
+
+test('lock screen automatically uses rectangular layout and never invents a stale interval',async()=>{
+  const stale={...makeSchedule(),checkedAt:'2020-01-01T00:00:00.000Z'};
+  const {model,operations}=await simulate({parameter:'bulb',family:'accessoryRectangular',response:stale});
+  assert.equal(model.widget.art.size.width,320);
+  assert.ok(operations.includes('Немає графіка'));
+  assert.ok(!operations.some(x=>/\d{2}:\d{2}–\d{2}:\d{2}/.test(x)));
 });
