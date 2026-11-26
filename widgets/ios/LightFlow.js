@@ -40,10 +40,10 @@ function minuteOf(value) {
   if (h < 0 || h > 24 || m < 0 || m > 59 || (h === 24 && m !== 0)) return NaN;
   return h * 60 + m;
 }
-function verified(data, now = new Date()) {
+function verified(data, now = new Date(), expectedDate = kyivDate(now)) {
   if (!data || data.queue !== "1.1" || data.kind !== "schedule" ||
-      !["scheduled_on", "scheduled_off"].includes(data.state) ||
-      data.date !== kyivDate(now) ||
+      !(expectedDate === kyivDate(now) ? ["scheduled_on", "scheduled_off"] : ["future_schedule"]).includes(data.state) ||
+      data.date !== expectedDate ||
       !Array.isArray(data.periods) || !data.periods.length ||
       !Array.isArray(data.outages)) return false;
   const checked = Date.parse(data.checkedAt);
@@ -211,7 +211,37 @@ function dialArt(data, now, compact) {
   return dc.getImage();
 }
 // Lock Screen: rectangular foreground only, readable even after iOS tinting.
-function lockArt(data, now) {
+function nextOpposite(periods, state, startMinute) {
+  return periods.find(p => minuteOf(p.start) >= startMinute && p.state !== state) || null;
+}
+async function lockNext(data, now) {
+  const current = periodNow(data,now);
+  if (!current) return {label:"Далі невідомо",range:null};
+  const next = nextOpposite(data.periods,current.state,minuteOf(current.end));
+  if (next) return {
+    label:next.state === "scheduled_off" ? "Відключення" : "Буде світло",
+    range:next.start + "–" + next.end
+  };
+  // The API publishes a separate verified schedule for the next Kyiv calendar day.
+  const day = new Date(kyivDate(now) + "T12:00:00Z");
+  day.setUTCDate(day.getUTCDate()+1);
+  const tomorrow = day.toISOString().slice(0,10);
+  try {
+    const req = new Request(API + "?date=" + tomorrow);
+    req.timeoutInterval = 5;
+    const future = await req.loadJSON();
+    if (verified(future,now,tomorrow)) {
+      const next = nextOpposite(future.periods,current.state,0);
+      if (next) return {
+        label:next.state === "scheduled_off" ? "Завтра: відключення" : "Завтра: світло",
+        range:next.start + "–" + next.end
+      };
+      return {label:"Змін не заплановано",range:null};
+    }
+  } catch (_) {}
+  return {label:"Далі невідомо",range:null};
+}
+function lockArt(data, now, next) {
   const dc = new DrawContext();
   dc.size = new Size(320,132);
   dc.opaque = false;
@@ -222,15 +252,20 @@ function lockArt(data, now) {
   bulbIcon(dc,44,64,38,white,white);
   const status = !span ? "Немає графіка" :
     span.state === "scheduled_off" ? "Немає світла" : "Є світло";
-  const range = span ? span.start + "–" + span.end : "—";
+  if (span && span.state === "scheduled_off") {
+    // Monochrome slash differentiates off from on independently of iOS tint.
+    line(dc,15,35,73,93,white,4);
+  }
   dc.setTextAlignedLeft();
   dc.setTextColor(white);
-  dc.setFont(Font.mediumSystemFont(20));
-  dc.drawTextInRect("1.1 · за графіком",new Rect(87,5,231,28));
-  dc.setFont(Font.boldSystemFont(29));
-  dc.drawTextInRect(status,new Rect(87,35,231,40));
-  dc.setFont(Font.mediumSystemFont(27));
-  dc.drawTextInRect(range,new Rect(87,79,231,38));
+  dc.setFont(Font.boldSystemFont(30));
+  dc.drawTextInRect(status,new Rect(87,8,231,42));
+  dc.setFont(Font.mediumSystemFont(next.label.length > 18 ? 19 : 23));
+  dc.drawTextInRect(next.label,new Rect(87,52,231,31));
+  if (next.range) {
+    dc.setFont(Font.boldSystemFont(29));
+    dc.drawTextInRect(next.range,new Rect(87,83,231,42));
+  }
   return dc.getImage();
 }
 async function fetchSchedule(now) {
@@ -273,7 +308,7 @@ async function run() {
   widget.backgroundColor=Color.clear();
   widget.url=widgetLaunchURL(); // Run the same script in its fullscreen web mode.
   widget.refreshAfterDate=new Date(now.getTime()+15*60*1000);
-  const art=mode==="lock"?lockArt(data,now):mode==="large"?dialArt(data,now,false):
+  const art=mode==="lock"?lockArt(data,now,await lockNext(data,now)):mode==="large"?dialArt(data,now,false):
     mode==="mini"?dialArt(data,now,true):bulbArt(data,now);
   const image=widget.addImage(art);
   image.applyFittingContentMode();
