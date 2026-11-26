@@ -37,7 +37,7 @@ test('only widget presentation changes; schedule and update logic remain intact'
   assert.match(source,/cursor === 1440/);
   assert.match(source,/const position=kyivMinutes\(now\)\/4/);
   assert.match(source,/widget\.refreshAfterDate=/);
-  assert.match(source,/widget\.url=SITE/);
+  assert.doesNotMatch(source,/\bwidget\s*\.\s*url\s*=/);
   const check=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
   assert.equal(check.status,0,check.stderr);
 });

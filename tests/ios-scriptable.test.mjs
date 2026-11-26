@@ -21,7 +21,7 @@ test('one Scriptable script supports all four iPhone widget designs',()=>{
   assert.match(source,/mode==="mini"\?dialArt\(data,now,true\):bulbArt\(data,now\)/);
   assert.match(source,/mode==="large"\?dialArt\(data,now,false\)/);
   assert.match(source,/widget\.refreshAfterDate=/);
-  assert.match(source,/widget\.url=SITE/);
+  assert.doesNotMatch(source,/\bwidget\s*\.\s*url\s*=/);
   assert.doesNotMatch(source,/FileManager|Keychain|localStorage|cacheDirectory|writeString|downloadFile/i);
 });
 
@@ -112,7 +112,7 @@ test('Scriptable executes all modes and creates correctly sized widget art',asyn
     assert.equal(result.model.widget.art.opaque,false,'DrawContext must be transparent');
     assert.equal(result.model.widget.art.respectScreenScale,true,'Keep Retina rendering');
     assert.equal(result.model.widget.backgroundColor.alpha,0,'Scriptable must not paint a background');
-    assert.equal(result.model.widget.url,'webapp://lightflow-api.lightflow-viliesov.workers.dev/');
+    assert.equal(result.model.widget.url,undefined,'Leave tap behavior to Scriptable settings');
     assert.ok(result.operations.length>0);
   }
 });
@@ -137,7 +137,7 @@ test('rectangular lock screen displays an explicit monochrome status and current
     assert.equal(model.widget.backgroundColor.alpha,0);
     assert.ok(operations.includes(status));
     assert.ok(operations.includes('00:00–24:00'));
-    assert.equal(model.widget.url,'webapp://lightflow-api.lightflow-viliesov.workers.dev/');
+    assert.equal(model.widget.url,undefined,'Leave tap behavior to Scriptable settings');
   }
 });
 
