@@ -21,7 +21,7 @@ test('one Scriptable script supports all four iPhone widget designs',()=>{
   assert.match(source,/mode==="mini"\?dialArt\(data,now,true\):bulbArt\(data,now\)/);
   assert.match(source,/mode==="large"\?dialArt\(data,now,false\)/);
   assert.match(source,/widget\.refreshAfterDate=/);
-  assert.match(source,/widget\.url=SITE/);
+  assert.match(source,/widget\.url=widgetLaunchURL\(\)/);
   assert.doesNotMatch(source,/FileManager|Keychain|localStorage|cacheDirectory|writeString|downloadFile/i);
 });
 
@@ -54,7 +54,7 @@ function makeSchedule(){
   };
 }
 
-async function simulate({parameter='bulb',family='small',response=makeSchedule()}) {
+async function simulate({parameter='bulb',family='small',response=makeSchedule(),runsInWidget=true,queryParameters={},runURL='scriptable:///run/LightFlow'}) {
   const operations=[];
   class FakeColor {
     constructor(hex,alpha=1){this.hex=hex;this.alpha=alpha;}
@@ -78,8 +78,9 @@ async function simulate({parameter='bulb',family='small',response=makeSchedule()
     constructor(){this.art=null;}
     setPadding() {}
     addImage(art){this.art=art;return {applyFittingContentMode(){},centerAlignImage(){}};}
-    async presentSmall(){}
-    async presentLarge(){}
+    async presentSmall(){model.preview='small';}
+    async presentLarge(){model.preview='large';}
+    async presentAccessoryRectangular(){model.preview='lock';}
   }
   const model={};
   const sandbox={
@@ -88,9 +89,11 @@ async function simulate({parameter='bulb',family='small',response=makeSchedule()
     Path:FakePath,DrawContext:FakeContext,
     Font:{boldSystemFont:n=>n,mediumSystemFont:n=>n},
     ListWidget:FakeWidget,
-    Request:class {async loadJSON(){return response;} },
-    args:{widgetParameter:parameter},
-    config:{widgetFamily:family,runsInWidget:true},
+    Request:class {async loadJSON(){model.requests=(model.requests||0)+1;return response;} },
+    URLScheme:{forRunningScript(){return runURL;}},
+    WebView:class {async loadURL(url){model.webURL=url;} async present(fullscreen){model.fullscreen=fullscreen;}},
+    args:{widgetParameter:parameter,queryParameters},
+    config:{widgetFamily:family,runsInWidget,runsInApp:!runsInWidget},
     Script:{setWidget(w){model.widget=w;},complete(){model.completed=true;}},
   };
   const runnable=source.replace(/\bawait run\(\);\s*$/, 'globalThis.__done=run();');
@@ -112,7 +115,7 @@ test('Scriptable executes all modes and creates correctly sized widget art',asyn
     assert.equal(result.model.widget.art.opaque,false,'DrawContext must be transparent');
     assert.equal(result.model.widget.art.respectScreenScale,true,'Keep Retina rendering');
     assert.equal(result.model.widget.backgroundColor.alpha,0,'Scriptable must not paint a background');
-    assert.equal(result.model.widget.url,'https://lightflow-api.lightflow-viliesov.workers.dev/');
+    assert.equal(result.model.widget.url,'scriptable:///run/LightFlow?lightflowOpen=1');
     assert.ok(result.operations.length>0);
   }
 });
@@ -137,7 +140,7 @@ test('rectangular lock screen displays an explicit monochrome status and current
     assert.equal(model.widget.backgroundColor.alpha,0);
     assert.ok(operations.includes(status));
     assert.ok(operations.includes('00:00–24:00'));
-    assert.equal(model.widget.url,'https://lightflow-api.lightflow-viliesov.workers.dev/');
+    assert.equal(model.widget.url,'scriptable:///run/LightFlow?lightflowOpen=1');
   }
 });
 
@@ -147,4 +150,25 @@ test('lock screen automatically uses rectangular layout and never invents a stal
   assert.equal(model.widget.art.size.width,320);
   assert.ok(operations.includes('Немає графіка'));
   assert.ok(!operations.some(x=>/\d{2}:\d{2}–\d{2}:\d{2}/.test(x)));
+});
+
+test('tap callback opens LightFlow fullscreen without rendering a widget or fetching schedule first',async()=>{
+  const {model}=await simulate({runsInWidget:false,queryParameters:{lightflowOpen:'1'}});
+  assert.equal(model.webURL,'https://lightflow-api.lightflow-viliesov.workers.dev/');
+  assert.equal(model.fullscreen,true);
+  assert.equal(model.completed,true);
+  assert.equal(model.widget,undefined);
+  assert.equal(model.requests,undefined);
+});
+test('widget refresh never opens WebView, and existing query in run URL is preserved',async()=>{
+  const {model}=await simulate({queryParameters:{lightflowOpen:'1'},runURL:'scriptable:///run?scriptName=Other%20Name'});
+  assert.equal(model.widget.url,'scriptable:///run?scriptName=Other%20Name&lightflowOpen=1');
+  assert.equal(model.webURL,undefined);
+  assert.equal(model.requests,1);
+});
+test('manual run without tap callback still previews the widget',async()=>{
+  const {model}=await simulate({runsInWidget:false});
+  assert.equal(model.preview,'small');
+  assert.equal(model.webURL,undefined);
+  assert.equal(model.completed,true);
 });
