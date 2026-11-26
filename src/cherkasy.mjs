@@ -128,7 +128,7 @@ export function parseArticle(html, publication, queue = QUEUE) {
   // Accept the official expanded regional heading, but not arbitrary prose.
   const lines = text.split('\n');
   const anchor = lines.findIndex(line =>
-    /^Години\s+відсутності\s+електропостачання(?:\s+по\s+області(?:\s*\([^\n)]*\))?)?\s*:\s*$/iu.test(line.trim())
+    /^Години\s+відсутності\s+електропостачання(?:\s+по\s+області(?:\s*\([^\n)]*\))?|\s+для\s+всіх\s+споживачів\s+Черкаської\s+області)?\s*:\s*$/iu.test(line.trim())
   );
   if (anchor < 0) throw new Error('Не знайдено офіційний перелік годин');
   const rows = lines.slice(anchor + 1);
