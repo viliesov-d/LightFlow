@@ -243,7 +243,20 @@ async function fetchSchedule(now) {
     return null;
   }
 }
+// Use Scriptable's documented run URL so the selected script name need not be hardcoded.
+function widgetLaunchURL() {
+  const url = URLScheme.forRunningScript();
+  return url + (url.includes("?") ? "&" : "?") + "lightflowOpen=1";
+}
 async function run() {
+  // Widget rendering is background-only. Open the web UI only on a foreground tap.
+  if (!config.runsInWidget && config.runsInApp && args.queryParameters?.lightflowOpen === "1") {
+    const web = new WebView();
+    await web.loadURL(SITE);
+    await web.present(true);
+    Script.complete();
+    return;
+  }
   const now=new Date();
   const param=String(args.widgetParameter || "bulb").trim().toLowerCase();
   const family=config.widgetFamily || "small";
@@ -258,7 +271,7 @@ async function run() {
   // Keep the Scriptable container transparent. In the iOS Home Screen
   // Clear style, the operating system decides whether to add real Liquid Glass.
   widget.backgroundColor=Color.clear();
-  widget.url=SITE; // iOS Scriptable widget taps open the LightFlow web app.
+  widget.url=widgetLaunchURL(); // Run the same script in its fullscreen web mode.
   widget.refreshAfterDate=new Date(now.getTime()+15*60*1000);
   const art=mode==="lock"?lockArt(data,now):mode==="large"?dialArt(data,now,false):
     mode==="mini"?dialArt(data,now,true):bulbArt(data,now);
