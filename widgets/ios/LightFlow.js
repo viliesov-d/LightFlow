@@ -3,6 +3,7 @@
 // Free forever: the script fetches the official schedule from our Cloudflare API.
 // No Apple Developer membership, custom IPA signing, local cache or data storage.
 const API = "https://lightflow-api.lightflow-viliesov.workers.dev/api/v1/schedule";
+const SITE = "https://lightflow-api.lightflow-viliesov.workers.dev/";
 const TZ = "Europe/Kyiv";
 const PAL = {
   mint: new Color("#6CE7BA"),
@@ -257,7 +258,7 @@ async function run() {
   // Keep the Scriptable container transparent. In the iOS Home Screen
   // Clear style, the operating system decides whether to add real Liquid Glass.
   widget.backgroundColor=Color.clear();
-  // Leave tap handling to Scriptable's widget configuration.
+  widget.url=SITE; // iOS Scriptable widget taps open the LightFlow web app.
   widget.refreshAfterDate=new Date(now.getTime()+15*60*1000);
   const art=mode==="lock"?lockArt(data,now):mode==="large"?dialArt(data,now,false):
     mode==="mini"?dialArt(data,now,true):bulbArt(data,now);
