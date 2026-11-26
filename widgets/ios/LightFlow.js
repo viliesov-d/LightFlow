@@ -1,5 +1,5 @@
-// LightFlow for iPhone — ONE Scriptable script, THREE Home Screen widgets.
-// Scriptable widget Parameter: "bulb" (small), "mini" (small), "large" (large).
+// LightFlow for iPhone — ONE Scriptable script, three Home Screen widgets and one Lock Screen widget.
+// Scriptable widget Parameter: "bulb", "mini", "large", "lock" (accessoryRectangular).
 // Free forever: the script fetches the official schedule from our Cloudflare API.
 // No Apple Developer membership, custom IPA signing, local cache or data storage.
 const API = "https://lightflow-api.lightflow-viliesov.workers.dev/api/v1/schedule";
@@ -210,6 +210,29 @@ function dialArt(data, now, compact) {
   circle(dc,to.x,to.y,compact?3.5:5,PAL.white);
   return dc.getImage();
 }
+// Lock Screen: rectangular foreground only, readable even after iOS tinting.
+function lockArt(data, now) {
+  const dc = new DrawContext();
+  dc.size = new Size(320,132);
+  dc.opaque = false;
+  dc.respectScreenScale = true;
+  const span = periodNow(data,now);
+  const white = new Color("#FFFFFF");
+  // Keep the icon and all essential text monochrome; state must not depend on color.
+  bulbIcon(dc,44,64,38,white,white);
+  const status = !span ? "Немає графіка" :
+    span.state === "scheduled_off" ? "Немає світла" : "Є світло";
+  const range = span ? span.start + "–" + span.end : "—";
+  dc.setTextAlignedLeft();
+  dc.setTextColor(white);
+  dc.setFont(Font.mediumSystemFont(20));
+  dc.drawTextInRect("1.1 · за графіком",new Rect(87,5,231,28));
+  dc.setFont(Font.boldSystemFont(29));
+  dc.drawTextInRect(status,new Rect(87,35,231,40));
+  dc.setFont(Font.mediumSystemFont(27));
+  dc.drawTextInRect(range,new Rect(87,79,231,38));
+  return dc.getImage();
+}
 async function fetchSchedule(now) {
   try {
     const req = new Request(API);
@@ -226,7 +249,8 @@ async function run() {
   const family=config.widgetFamily || "small";
   // Set widget Parameter to bulb or mini for two distinct SMALL widgets.
   // For a LARGE widget, use the same script with Parameter "large".
-  const mode=family==="large" || param==="large" && family!=="small" ?
+  const lock=family==="accessoryRectangular" || (!config.runsInWidget && param==="lock");
+  const mode=lock ? "lock" : family==="large" || param==="large" && family!=="small" ?
     "large" : param==="mini" ? "mini" : "bulb";
   const data=await fetchSchedule(now);
   const widget=new ListWidget();
@@ -236,14 +260,15 @@ async function run() {
   widget.backgroundColor=Color.clear();
   widget.url=SITE; // iOS Scriptable widget taps open the LightFlow web app.
   widget.refreshAfterDate=new Date(now.getTime()+15*60*1000);
-  const art=mode==="large"?dialArt(data,now,false):
+  const art=mode==="lock"?lockArt(data,now):mode==="large"?dialArt(data,now,false):
     mode==="mini"?dialArt(data,now,true):bulbArt(data,now);
   const image=widget.addImage(art);
   image.applyFittingContentMode();
   image.centerAlignImage();
   Script.setWidget(widget);
   if(!config.runsInWidget){
-    if(mode==="large")await widget.presentLarge();
+    if(mode==="lock")await widget.presentAccessoryRectangular();
+    else if(mode==="large")await widget.presentLarge();
     else await widget.presentSmall();
   }
   Script.complete();
