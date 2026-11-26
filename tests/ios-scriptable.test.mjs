@@ -112,7 +112,7 @@ test('Scriptable executes all modes and creates correctly sized widget art',asyn
     assert.equal(result.model.widget.art.opaque,false,'DrawContext must be transparent');
     assert.equal(result.model.widget.art.respectScreenScale,true,'Keep Retina rendering');
     assert.equal(result.model.widget.backgroundColor.alpha,0,'Scriptable must not paint a background');
-    assert.equal(result.model.widget.url,'https://lightflow-api.lightflow-viliesov.workers.dev/');
+    assert.equal(result.model.widget.url,'webapp://lightflow-api.lightflow-viliesov.workers.dev/');
     assert.ok(result.operations.length>0);
   }
 });
@@ -137,7 +137,7 @@ test('rectangular lock screen displays an explicit monochrome status and current
     assert.equal(model.widget.backgroundColor.alpha,0);
     assert.ok(operations.includes(status));
     assert.ok(operations.includes('00:00–24:00'));
-    assert.equal(model.widget.url,'https://lightflow-api.lightflow-viliesov.workers.dev/');
+    assert.equal(model.widget.url,'webapp://lightflow-api.lightflow-viliesov.workers.dev/');
   }
 });
 
