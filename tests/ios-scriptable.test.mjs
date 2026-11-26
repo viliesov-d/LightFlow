@@ -54,7 +54,7 @@ function makeSchedule(){
   };
 }
 
-async function simulate({parameter='bulb',family='small',response=makeSchedule(),runsInWidget=true,queryParameters={},runURL='scriptable:///run/LightFlow'}) {
+async function simulate({parameter='bulb',family='small',response=makeSchedule(),runsInWidget=true,queryParameters={},runURL='scriptable:///run/LightFlow',now=new Date(),tomorrowResponse=null}) {
   const operations=[];
   class FakeColor {
     constructor(hex,alpha=1){this.hex=hex;this.alpha=alpha;}
@@ -83,13 +83,14 @@ async function simulate({parameter='bulb',family='small',response=makeSchedule()
     async presentAccessoryRectangular(){model.preview='lock';}
   }
   const model={};
+  class FixedDate extends Date { constructor(...a){super(...(a.length?a:[now.getTime()]));} }
   const sandbox={
-    Date,Intl,Math,Number,Object,String,Array,Promise,
+    Date:FixedDate,Intl,Math,Number,Object,String,Array,Promise,
     Color:FakeColor,Size:FakeSize,Point:FakePoint,Rect:FakeRect,
     Path:FakePath,DrawContext:FakeContext,
     Font:{boldSystemFont:n=>n,mediumSystemFont:n=>n},
     ListWidget:FakeWidget,
-    Request:class {async loadJSON(){model.requests=(model.requests||0)+1;return response;} },
+    Request:class {constructor(url){this.url=url;} async loadJSON(){model.requests=(model.requests||0)+1;return this.url.includes('?date=')?tomorrowResponse:response;} },
     URLScheme:{forRunningScript(){return runURL;}},
     WebView:class {async loadURL(url){model.webURL=url;} async present(fullscreen){model.fullscreen=fullscreen;}},
     args:{widgetParameter:parameter,queryParameters},
@@ -129,7 +130,7 @@ test('invalid or stale API never produces made-up active periods',async()=>{
   assert.equal(r2.model.completed,true);
 });
 
-test('rectangular lock screen displays an explicit monochrome status and current interval',async()=>{
+test('rectangular lock screen displays an explicit monochrome status without a current interval',async()=>{
   for(const [state,status] of [['scheduled_on','Є світло'],['scheduled_off','Немає світла']]){
     const response={...makeSchedule(),state,periods:[{start:'00:00',end:'24:00',state}],outages:state==='scheduled_off'?[{start:'00:00',end:'24:00'}]:[]};
     const {model,operations}=await simulate({parameter:'lock',family:'accessoryRectangular',response});
@@ -139,7 +140,8 @@ test('rectangular lock screen displays an explicit monochrome status and current
     assert.equal(model.widget.art.opaque,false);
     assert.equal(model.widget.backgroundColor.alpha,0);
     assert.ok(operations.includes(status));
-    assert.ok(operations.includes('00:00–24:00'));
+    assert.ok(!operations.includes('00:00–24:00'));
+    assert.ok(operations.includes('Далі невідомо'));
     assert.equal(model.widget.url,'scriptable:///run/LightFlow?lightflowOpen=1');
   }
 });
@@ -171,4 +173,45 @@ test('manual run without tap callback still previews the widget',async()=>{
   assert.equal(model.preview,'small');
   assert.equal(model.webURL,undefined);
   assert.equal(model.completed,true);
+});
+
+function fixedSchedule(now,periods,{future=false,date='2026-11-26'}={}){
+  return {queue:'1.1',kind:'schedule',state:future?'future_schedule':'scheduled_on',
+    date,checkedAt:now.toISOString(),periods,outages:periods.filter(p=>p.state==='scheduled_off')};
+}
+test('lock screen shows only current status and next opposite interval',async()=>{
+  const periods=[
+    {start:'00:00',end:'12:00',state:'scheduled_on'},
+    {start:'12:00',end:'18:00',state:'scheduled_off'},
+    {start:'18:00',end:'24:00',state:'scheduled_on'}
+  ];
+  for(const [time,status,label,range,hidden] of [
+    ['08:00','Є світло','Відключення','12:00–18:00','00:00–12:00'],
+    ['13:00','Немає світла','Буде світло','18:00–24:00','12:00–18:00']
+  ]){
+    const now=new Date('2026-11-26T'+time+':00+02:00');
+    const {model,operations}=await simulate({family:'accessoryRectangular',now,response:fixedSchedule(now,periods)});
+    assert.ok(operations.includes(status));
+    assert.ok(operations.includes(label));
+    assert.ok(operations.includes(range));
+    assert.ok(!operations.includes(hidden));
+    assert.ok(!operations.includes('1.1 · за графіком'));
+    assert.equal(model.requests,1);
+  }
+});
+test('lock screen uses verified tomorrow schedule when no opposite period remains today',async()=>{
+  const now=new Date('2026-11-26T22:00:00+02:00');
+  const response=fixedSchedule(now,[{start:'00:00',end:'24:00',state:'scheduled_on'}]);
+  const tomorrowResponse=fixedSchedule(now,[
+    {start:'00:00',end:'05:00',state:'scheduled_on'},
+    {start:'05:00',end:'08:00',state:'scheduled_off'},
+    {start:'08:00',end:'24:00',state:'scheduled_on'}
+  ],{future:true,date:'2026-11-27'});
+  const {model,operations}=await simulate({family:'accessoryRectangular',now,response,tomorrowResponse});
+  assert.ok(operations.includes('Завтра: відключення'));
+  assert.ok(operations.includes('05:00–08:00'));
+  assert.equal(model.requests,2);
+  const stale=await simulate({family:'accessoryRectangular',now,response,tomorrowResponse:{...tomorrowResponse,checkedAt:'2020-01-01T00:00:00Z'}});
+  assert.ok(stale.operations.includes('Далі невідомо'));
+  assert.ok(!stale.operations.includes('05:00–08:00'));
 });
